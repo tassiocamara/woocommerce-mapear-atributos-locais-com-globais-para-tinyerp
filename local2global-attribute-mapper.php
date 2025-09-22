@@ -74,8 +74,14 @@ function bootstrap(): void {
     }
 
     // Garante que o WooCommerce está carregado antes de inicializar o plugin.
-    if ( ! class_exists( '\\WooCommerce' ) || ! did_action( 'woocommerce_init' ) ) {
-        return;
+    if ( ! class_exists( '\WooCommerce' ) ) {
+        return; // WooCommerce não carregado.
+    }
+    if ( ! did_action( 'woocommerce_init' ) ) {
+        if ( function_exists( 'wc_get_logger' ) ) {
+            wc_get_logger()->info( 'bootstrap.defer_waiting_woocommerce', [ 'source' => 'local2global' ] );
+        }
+        return; // Aguardando evento woocommerce_init.
     }
 
     $bootstrapped = true;
@@ -87,3 +93,7 @@ function bootstrap(): void {
     $plugin->init();
 }
 add_action( 'init', __NAMESPACE__ . '\\bootstrap', 20 );
+
+// Fallback: caso o WooCommerce inicialize após o hook 'init' onde tentamos bootstrap,
+// garantimos nova tentativa assim que 'woocommerce_init' disparar.
+\add_action( 'woocommerce_init', __NAMESPACE__ . '\\bootstrap', 5 );

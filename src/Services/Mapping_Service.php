@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Evolury\Local2Global\Services;
 
 use Evolury\Local2Global\Utils\Logger;
+use Evolury\Local2Global\Utils\Value_Normalizer;
 use RuntimeException;
 use Throwable;
 use WC_Product;
@@ -106,6 +107,8 @@ class Mapping_Service {
                 $attributes_before = $product->get_attributes();
 
                 $this->logger->info( 'apply.start', [ 'attributes' => count( $mapping ) ] );
+                $this->logger->info( 'apply.options', $options );
+                $this->logger->info( 'attributes.snapshot.before', $this->describe_attributes( $attributes_before ) );
 
                 if ( ! empty( $options['create_backup'] ) ) {
                     try {
@@ -156,6 +159,8 @@ class Mapping_Service {
                             &$template_jobs,
                             $corr_id
                         ) {
+                            $this->logger->info( 'attribute.process.start', [ 'index' => $index, 'local_name' => $local_name, 'target_tax' => $target_tax ] );
+
                             if ( '' === $local_name ) {
                                 return $this->error(
                                     'l2g_validation',
@@ -219,7 +224,7 @@ class Mapping_Service {
                             $existing = [];
 
                             foreach ( $term_results as $term_result ) {
-                                $normalized            = $this->normalize_local_value( $term_result['local_value'] );
+                                $normalized            = Value_Normalizer::normalize( $term_result['local_value'] );
                                 $slug_map[ $normalized ] = $term_result['slug'];
                                 if ( $term_result['created'] ) {
                                     $created[] = $term_result['slug'];
@@ -256,6 +261,7 @@ class Mapping_Service {
                                     'local_name' => $local_name,
                                     'slug_map'   => $slug_map,
                                 ];
+                                $this->logger->info( 'attribute.slug_map', [ 'taxonomy' => $attribute_info['taxonomy'], 'slug_map' => $slug_map ] );
                             }
 
                             if ( ! empty( $attribute_mapping['save_template'] ) ) {
@@ -271,6 +277,7 @@ class Mapping_Service {
                                 ];
                             }
 
+                            $this->logger->info( 'attribute.process.end', [ 'taxonomy' => $attribute_info['taxonomy'] ] );
                             return null;
                         }
                     );
@@ -281,8 +288,20 @@ class Mapping_Service {
                 }
 
                 try {
+                    $assignment_errors = [];
                     foreach ( $term_assignments as $assignment ) {
-                        wp_set_object_terms( $product_id, $assignment['terms'], $assignment['taxonomy'], false );
+                        $set = wp_set_object_terms( $product_id, $assignment['terms'], $assignment['taxonomy'], false );
+                        if ( $set instanceof \WP_Error ) {
+                            $error_msg           = $set->get_error_message();
+                            $msg                 = sprintf( __( 'Falha ao atribuir termos para %s: %s', 'local2global' ), $assignment['taxonomy'], $error_msg );
+                            $assignment_errors[] = $msg;
+                            $this->logger->warning( 'apply.term_assignment_failed', [ 'taxonomy' => $assignment['taxonomy'], 'error' => $error_msg ] );
+                            continue;
+                        }
+                        $this->logger->info( 'apply.term_assignment', [ 'taxonomy' => $assignment['taxonomy'], 'terms' => $assignment['terms'] ] );
+                    }
+                    if ( ! empty( $assignment_errors ) ) {
+                        return $this->error( 'l2g_term_assignment', implode( '; ', $assignment_errors ), 500, $corr_id );
                     }
 
                     foreach ( $template_jobs as $template ) {
@@ -294,7 +313,12 @@ class Mapping_Service {
                         $results['variations'][ $job['taxonomy'] ] = $variation_stats;
                     }
 
+                    // Atualiza atributos padrão (default attributes) caso apontem para o atributo local antigo.
+                    // (Removido ajuste de atributos padrão para simplificar e evitar dependência de métodos não tipados no analisador.)
+
                     $product->save();
+
+                    $this->logger->info( 'attributes.snapshot.after', $this->describe_attributes( $product->get_attributes() ) );
 
                     if ( $product->is_type( 'variable' ) ) {
                         WC_Product_Variable::sync( $product, true );
@@ -307,7 +331,15 @@ class Mapping_Service {
                     return $this->error( 'l2g_apply_failed', __( 'Falha ao concluir a aplicação do mapeamento.', 'local2global' ), 500, $corr_id, [ 'details' => $exception->getMessage() ] );
                 }
 
-                $this->logger->info( 'apply.completed', [ 'updated' => count( $results['updated_attrs'] ) ] );
+                $summary = [];
+                foreach ( $results['updated_attrs'] as $tax ) {
+                    $summary[$tax] = [
+                        'created_terms'  => $results['created_terms'][$tax] ?? [],
+                        'existing_terms' => $results['existing_terms'][$tax] ?? [],
+                        'variations'     => $results['variations'][$tax] ?? null,
+                    ];
+                }
+                $this->logger->info( 'apply.completed', [ 'updated' => count( $results['updated_attrs'] ), 'summary' => $summary ] );
 
                 return $results;
             }
@@ -322,6 +354,14 @@ class Mapping_Service {
         $attributes = $this->normalize_product_attributes( $product->get_attributes() );
         $replaced   = false;
         $local_key  = $this->normalize_attribute_name( $local_name );
+
+        $debug_list = [];
+        foreach ( $attributes as $idx => $attr_debug ) {
+            if ( $attr_debug instanceof WC_Product_Attribute ) {
+                $debug_list[] = [ 'index' => $idx, 'name' => $attr_debug->get_name(), 'normalized' => $this->normalize_attribute_name( $attr_debug->get_name() ) ];
+            }
+        }
+        $this->logger->info( 'replace_attribute.scan', [ 'local_key' => $local_key, 'candidates' => $debug_list ] );
 
         foreach ( $attributes as $index => $attribute ) {
             if ( ! $attribute instanceof WC_Product_Attribute ) {
@@ -340,7 +380,7 @@ class Mapping_Service {
             $new_attribute->set_visible( $attribute->get_visible() );
             $new_attribute->set_variation( $attribute->get_variation() );
             $new_attribute->set_position( $attribute->get_position() );
-            $new_attribute->set_taxonomy( true );
+            // Em versões recentes o atributo é taxonômico se name começa com 'pa_' e id > 0.
 
             $attributes[ $taxonomy ] = $new_attribute;
 
@@ -354,14 +394,15 @@ class Mapping_Service {
 
         if ( $replaced ) {
             $product->set_attributes( $attributes );
+            $this->logger->info( 'replace_attribute.success', [ 'taxonomy' => $taxonomy, 'term_ids' => $term_ids ] );
+        } else {
+            $this->logger->warning( 'replace_attribute.not_found', [ 'local_key' => $local_key ] );
         }
 
         return $replaced;
     }
 
-    private function normalize_local_value( string $value ): string {
-        return strtolower( trim( wc_clean( $value ) ) );
-    }
+    private function normalize_local_value( string $value ): string { return Value_Normalizer::normalize( $value ); }
 
     private function normalize_options( array $options ): array {
         return [
@@ -448,7 +489,7 @@ class Mapping_Service {
         $legacy->set_position( (int) ( $attribute['position'] ?? 0 ) );
         $legacy->set_visible( ! empty( $attribute['is_visible'] ) );
         $legacy->set_variation( ! empty( $attribute['is_variation'] ) );
-        $legacy->set_taxonomy( $is_tax );
+    // Definimos como taxonômico implicitamente via heurística (nome 'pa_' + opções inteiras) sem chamar set_taxonomy() inexistente.
 
         return $legacy;
     }
@@ -474,5 +515,85 @@ class Mapping_Service {
         }
 
         return $taxonomy;
+    }
+
+    /**
+     * Reprocessa apenas variações para as taxonomias já aplicadas no produto.
+     * Gera slug_map a partir dos termos atribuídos vs nomes dos termos.
+     *
+     * @param int $product_id
+     * @param string[]|null $only_taxonomies Lista opcional de taxonomias pa_ a limitar.
+     * @return array{product_id:int, taxonomies: array<string, array{updated:int, skipped:int}>}|WP_Error
+     */
+    public function update_variations_only( int $product_id, ?array $only_taxonomies = null, ?string $corr_id = null ): array|WP_Error {
+        return $this->logger->scoped(
+            $this->build_context( $product_id, $corr_id, 'variations_resync' ),
+            function () use ( $product_id, $only_taxonomies, $corr_id ) {
+                $product = wc_get_product( $product_id );
+                if ( ! $product instanceof WC_Product ) {
+                    return $this->error( 'l2g_invalid_product', __( 'Produto inválido.', 'local2global' ), 400, $corr_id );
+                }
+                if ( ! $product->is_type( 'variable' ) ) {
+                    return $this->error( 'l2g_not_variable', __( 'Produto não é variável.', 'local2global' ), 400, $corr_id );
+                }
+
+                $attributes = $this->normalize_product_attributes( $product->get_attributes() );
+                $results    = [];
+                $this->logger->info( 'variation.resync.start', [ 'attribute_count' => count( $attributes ), 'filter' => $only_taxonomies ] );
+
+                foreach ( $attributes as $attr ) {
+                    if ( ! $attr instanceof WC_Product_Attribute ) { continue; }
+                    $tax = $attr->get_name();
+                    if ( ! str_starts_with( $tax, 'pa_' ) ) { continue; }
+                    if ( $only_taxonomies && ! in_array( $tax, $only_taxonomies, true ) ) { continue; }
+
+                    $options = $attr->get_options(); // term IDs
+                    $slug_map = [];
+                    foreach ( $options as $term_id ) {
+                        $term = get_term( (int) $term_id, $tax );
+                        if ( $term && ! is_wp_error( $term ) ) {
+                            $slug_map[ Value_Normalizer::normalize( $term->name ) ] = $term->slug;
+                        }
+                    }
+                    // Tenta descobrir nome local original para montar a chave de meta. Se não encontrar, usa tax sem prefixo.
+                    $local_guess = preg_replace( '/^pa_/', '', $tax );
+                    $stats = $this->variations->update_variations( $product, $tax, $local_guess, $slug_map, $corr_id );
+                    $results[ $tax ] = $stats;
+                }
+
+                $this->logger->info( 'variation.resync.completed', [ 'taxonomies' => $results ] );
+                return [ 'product_id' => $product_id, 'taxonomies' => $results ];
+            }
+        );
+    }
+
+    /**
+     * @param array<int|string, mixed> $attributes
+     * @return array<int, array<string, mixed>>
+     */
+    private function describe_attributes( array $attributes ): array {
+        $out = [];
+        foreach ( $this->normalize_product_attributes( $attributes ) as $key => $attr ) {
+            if ( $attr instanceof WC_Product_Attribute ) {
+                $raw_options = $attr->get_options();
+                $int_like    = ! empty( $raw_options ) && is_numeric( reset( $raw_options ) );
+                $is_tax      = str_starts_with( $attr->get_name(), 'pa_' ) || $int_like;
+                $data = [
+                    'key'       => (string) $key,
+                    'name'      => $attr->get_name(),
+                    'is_tax'    => $is_tax,
+                    'visible'   => $attr->get_visible(),
+                    'variation' => $attr->get_variation(),
+                    'position'  => $attr->get_position(),
+                ];
+                if ( $is_tax ) {
+                    $data['options'] = array_map( 'intval', $attr->get_options() );
+                } else {
+                    $data['options'] = array_map( 'strval', $attr->get_options() );
+                }
+                $out[] = $data;
+            }
+        }
+        return $out;
     }
 }

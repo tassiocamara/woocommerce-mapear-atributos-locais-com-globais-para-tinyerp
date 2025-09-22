@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Evolury\Local2Global\Services;
 
 use Evolury\Local2Global\Utils\Logger;
+use Evolury\Local2Global\Utils\Value_Normalizer;
 use WC_Product;
 use WC_Product_Variable;
 use WC_Product_Variation;
@@ -39,8 +40,9 @@ class Variation_Service {
                 continue;
             }
 
-            $normalized = $this->normalize_local_value( $current_value );
+            $normalized = Value_Normalizer::normalize( $current_value );
             if ( ! isset( $slug_map[ $normalized ] ) ) {
+                $this->logger->warning( 'variation.slug_map_missing', [ 'variation_id' => $variation_id, 'raw_value' => $current_value, 'normalized' => $normalized ] );
                 $skipped++;
                 continue;
             }
@@ -72,7 +74,5 @@ class Variation_Service {
         return [ 'updated' => $updated, 'skipped' => $skipped ];
     }
 
-    private function normalize_local_value( string $value ): string {
-        return strtolower( trim( wc_clean( $value ) ) );
-    }
+    private function normalize_local_value( string $value ): string { return Value_Normalizer::normalize( $value ); }
 }
