@@ -414,16 +414,35 @@ class Mapping_Service {
     private function normalize_local_value( string $value ): string { return Value_Normalizer::normalize( $value ); }
 
     private function normalize_options( array $options ): array {
+        // Defaults globais (settings). Falls back to explicit request overrides.
+        $get = function( string $key, string $default = 'no' ) {
+            if ( function_exists( 'get_option' ) ) {
+                return call_user_func( 'get_option', $key, $default );
+            }
+            return $default; // ambiente de análise / testes stub
+        };
+        $global = [
+            'auto_create_terms'             => $get( 'local2global_auto_create_terms', 'no' ) === 'yes',
+            'update_variations'             => $get( 'local2global_update_variations', 'no' ) === 'yes',
+            'create_backup'                 => $get( 'local2global_create_backup', 'no' ) === 'yes',
+            'hydrate_variations'            => $get( 'local2global_hydrate_variations', 'no' ) === 'yes',
+            'aggressive_hydrate_variations' => $get( 'local2global_aggressive_hydrate_variations', 'no' ) === 'yes',
+            'save_template_default'         => $get( 'local2global_save_template_default', 'no' ) === 'yes',
+        ];
+
         $normalized = [
-            'auto_create_terms'             => ! empty( $options['auto_create_terms'] ),
-            'update_variations'             => ! empty( $options['update_variations'] ),
-            'create_backup'                 => ! empty( $options['create_backup'] ),
-            'aggressive_hydrate_variations' => ! empty( $options['aggressive_hydrate_variations'] ),
+            'auto_create_terms'             => array_key_exists( 'auto_create_terms', $options ) ? ! empty( $options['auto_create_terms'] ) : $global['auto_create_terms'],
+            'update_variations'             => array_key_exists( 'update_variations', $options ) ? ! empty( $options['update_variations'] ) : $global['update_variations'],
+            'create_backup'                 => array_key_exists( 'create_backup', $options ) ? ! empty( $options['create_backup'] ) : $global['create_backup'],
+            'aggressive_hydrate_variations' => array_key_exists( 'aggressive_hydrate_variations', $options ) ? ! empty( $options['aggressive_hydrate_variations'] ) : $global['aggressive_hydrate_variations'],
         ];
         if ( array_key_exists( 'hydrate_variations', $options ) ) {
             $normalized['hydrate_variations'] = ! empty( $options['hydrate_variations'] );
         } else {
-            $normalized['hydrate_variations'] = $normalized['update_variations'];
+            $normalized['hydrate_variations'] = $global['hydrate_variations'] ?? $normalized['update_variations'];
+        }
+        if ( $global['save_template_default'] ) {
+            $normalized['save_template_default'] = true;
         }
         return $normalized;
     }
