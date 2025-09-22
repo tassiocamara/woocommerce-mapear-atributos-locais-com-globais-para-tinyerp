@@ -23,10 +23,30 @@ class Plugin {
     private Variation_Service $variations;
     private Rollback_Service $rollback;
     private Mapping_Service $mapping;
-    private UI $admin_ui;
     private Rest_Controller $rest;
 
-    public function __construct( private string $plugin_dir, private string $plugin_basename ) {}
+    /** URL base do plugin (termina com /) */
+    private string $plugin_url;
+    /** Caminho do diretório do plugin (termina com /) */
+    private string $plugin_dir;
+    /** Basename do plugin (ex.: pasta/plugin.php) */
+    private string $plugin_basename;
+
+    /** Mantido para potencial uso futuro/testes */
+    private ?UI $admin_ui = null;
+
+    /**
+     * @param string $plugin_root     Caminho fornecido pelo bootstrap (arquivo ou diretório).
+     * @param string $plugin_basename Basename do plugin (ex.: my-plugin/my-plugin.php).
+     */
+    public function __construct( private string $plugin_root, string $plugin_basename ) {
+        // Deriva path e URL com segurança a partir do basename, independente de $plugin_root.
+        $this->plugin_basename = $plugin_basename;
+        $file_path             = \WP_PLUGIN_DIR . '/' . $this->plugin_basename;
+
+        $this->plugin_dir = plugin_dir_path( $file_path );
+        $this->plugin_url = plugin_dir_url( $file_path );
+    }
 
     public function init(): void {
         $this->logger     = new Logger();
@@ -35,10 +55,19 @@ class Plugin {
         $this->terms      = new Term_Service( $this->logger );
         $this->variations = new Variation_Service( $this->logger );
         $this->rollback   = new Rollback_Service( $this->logger );
-        $this->mapping    = new Mapping_Service( $this->terms, $this->variations, $this->templates, $this->rollback, $this->logger );
+        $this->mapping    = new Mapping_Service(
+            $this->terms,
+            $this->variations,
+            $this->templates,
+            $this->rollback,
+            $this->logger
+        );
 
-        $this->admin_ui = new UI( plugin_dir_url( $this->plugin_dir . 'local2global-attribute-mapper.php' ) );
-        $this->admin_ui->hooks();
+        // Carrega UI apenas no admin.
+        if ( is_admin() ) {
+            $this->admin_ui = new UI( $this->plugin_url );
+            $this->admin_ui->hooks();
+        }
 
         $this->rest = new Rest_Controller( $this->discovery, $this->mapping );
         add_action( 'rest_api_init', [ $this->rest, 'register_routes' ] );

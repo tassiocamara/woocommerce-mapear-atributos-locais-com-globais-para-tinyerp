@@ -45,17 +45,27 @@ function autoload( string $class ): void {
 
 spl_autoload_register( __NAMESPACE__ . '\\autoload' );
 
-register_activation_hook( __FILE__, static function (): void {
+/**
+ * Executada na ativação do plugin para declarar compatibilidade com HPOS.
+ */
+function on_activation(): void {
     ( new Setup\Activator( plugin_basename( __FILE__ ) ) )->maybe_declare_hpos_compatibility();
-} );
+}
+register_activation_hook( __FILE__, __NAMESPACE__ . '\\on_activation' );
 
-add_action( 'plugins_loaded', static function (): void {
-    if ( ! class_exists( '\\WooCommerce' ) ) {
+/**
+ * Bootstrap principal do plugin. Executa apenas após o WooCommerce inicializar.
+ */
+function bootstrap(): void {
+    // Garante que o WooCommerce está carregado antes de inicializar o plugin.
+    if ( ! class_exists( '\\WooCommerce' ) || ! did_action( 'woocommerce_loaded' ) ) {
         return;
     }
 
     load_plugin_textdomain( 'local2global', false, dirname( plugin_basename( __FILE__ ) ) . '/languages' );
 
+    // Inicializa o núcleo do plugin.
     $plugin = new Plugin( plugin_dir_path( __FILE__ ), plugin_basename( __FILE__ ) );
     $plugin->init();
-} );
+}
+add_action( 'woocommerce_init', __NAMESPACE__ . '\\bootstrap', 20 );
