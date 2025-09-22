@@ -7,6 +7,30 @@ namespace Evolury\Local2Global\Services;
 use Evolury\Local2Global\Utils\Logger;
 use RuntimeException;
 
+// Stubs condicionais apenas para satisfazer análise estática fora do ambiente WordPress.
+// Em produção (WordPress carregado) essas funções já existem e os stubs não são registrados.
+if ( ! function_exists( 'wc_attribute_taxonomy_id_by_name' ) ) {
+    function wc_attribute_taxonomy_id_by_name( $name ) { return 0; }
+}
+if ( ! function_exists( 'taxonomy_exists' ) ) {
+    function taxonomy_exists( $taxonomy ) { return false; }
+}
+if ( ! function_exists( 'register_taxonomy' ) ) {
+    function register_taxonomy( $taxonomy, $object_type, $args = [] ) { return true; }
+}
+if ( ! function_exists( 'apply_filters' ) ) {
+    function apply_filters( $hook, $value ) { return $value; }
+}
+if ( ! function_exists( 'get_term' ) ) {
+    function get_term( $term_id, $taxonomy ) { return null; }
+}
+if ( ! function_exists( 'get_term_by' ) ) {
+    function get_term_by( $field, $value, $taxonomy ) { return null; }
+}
+if ( ! function_exists( 'wp_insert_term' ) ) {
+    function wp_insert_term( $term, $taxonomy, $args = [] ) { return [ 'term_id' => 0 ]; }
+}
+
 class Term_Service {
     /** @var array<string, array<string, array{term_id:int, slug:string}>> */
     private array $term_cache = [];
@@ -25,7 +49,7 @@ class Term_Service {
         $label          = sanitize_text_field( $label );
 
         $attribute_slug = substr( $target_taxonomy, 3 );
-        $attribute_id   = wc_attribute_taxonomy_id_by_name( $attribute_slug );
+    $attribute_id   = wc_attribute_taxonomy_id_by_name( $attribute_slug ); // função WooCommerce global
 
         if ( ! $attribute_id ) {
             if ( ! $create_if_missing ) {
@@ -51,10 +75,12 @@ class Term_Service {
 
             // Após criar um novo atributo é necessário recarregar as taxonomias.
             wc_register_attribute_taxonomies();
+        } else {
+            $this->logger->info( 'Atributo global existente.', [ 'taxonomy' => $target_taxonomy, 'attribute_id' => $attribute_id ] );
         }
 
-        if ( ! taxonomy_exists( $target_taxonomy ) ) {
-            register_taxonomy( $target_taxonomy, apply_filters( "woocommerce_taxonomy_objects_{$target_taxonomy}", [ 'product' ] ), apply_filters( "woocommerce_taxonomy_args_{$target_taxonomy}", [
+        if ( ! \taxonomy_exists( $target_taxonomy ) ) {
+            \register_taxonomy( $target_taxonomy, \apply_filters( "woocommerce_taxonomy_objects_{$target_taxonomy}", [ 'product' ] ), \apply_filters( "woocommerce_taxonomy_args_{$target_taxonomy}", [
                 'labels'       => [ 'name' => $label ],
                 'hierarchical' => false,
                 'show_ui'      => false,
@@ -75,7 +101,7 @@ class Term_Service {
      */
     public function ensure_terms( string $taxonomy, array $terms, bool $allow_creation ): array {
         $taxonomy = sanitize_key( $taxonomy );
-        if ( ! taxonomy_exists( $taxonomy ) ) {
+        if ( ! \taxonomy_exists( $taxonomy ) ) {
             throw new RuntimeException( sprintf( 'Taxonomia %s não registrada.', $taxonomy ) );
         }
 
@@ -89,7 +115,7 @@ class Term_Service {
             $created = false;
 
             if ( ! $existing && ! empty( $term_config['term_id'] ) ) {
-                $term = get_term( (int) $term_config['term_id'], $taxonomy );
+                $term = \get_term( (int) $term_config['term_id'], $taxonomy );
                 if ( $term && ! is_wp_error( $term ) ) {
                     $existing = [
                         'term_id' => (int) $term->term_id,
@@ -99,12 +125,13 @@ class Term_Service {
             }
 
             if ( ! $existing ) {
-                $term = get_term_by( 'slug', $slug, $taxonomy );
+                $term = \get_term_by( 'slug', $slug, $taxonomy );
                 if ( $term ) {
                     $existing = [
                         'term_id' => (int) $term->term_id,
                         'slug'    => (string) $term->slug,
                     ];
+                    $this->logger->info( 'Termo existente localizado.', [ 'taxonomy' => $taxonomy, 'slug' => $slug, 'term_id' => (int) $term->term_id ] );
                 }
             }
 
@@ -115,7 +142,7 @@ class Term_Service {
                 }
 
                 $term_name = $term_config['term_name'] ?? $local_value;
-                $result    = wp_insert_term( $term_name, $taxonomy, [ 'slug' => $slug ] );
+                $result    = \wp_insert_term( $term_name, $taxonomy, [ 'slug' => $slug ] );
 
                 if ( is_wp_error( $result ) ) {
                     throw new RuntimeException( $result->get_error_message() );
@@ -126,7 +153,7 @@ class Term_Service {
                     'slug'    => (string) $slug,
                 ];
                 $created  = true;
-                $this->logger->info( 'Termo criado.', [ 'taxonomy' => $taxonomy, 'slug' => $slug ] );
+                $this->logger->info( 'Termo criado.', [ 'taxonomy' => $taxonomy, 'slug' => $slug, 'term_id' => (int) $result['term_id'] ] );
             }
 
             $this->set_cached_term( $taxonomy, $existing['slug'], $existing );
@@ -137,12 +164,18 @@ class Term_Service {
                 'slug'        => $existing['slug'],
                 'created'     => $created,
             ];
+            if ( ! $created ) {
+                $this->logger->info( 'Termo reaproveitado.', [ 'taxonomy' => $taxonomy, 'slug' => $existing['slug'], 'term_id' => $existing['term_id'] ] );
+            }
         }
 
         return $results;
     }
 
     private function get_cached_term( string $taxonomy, string $slug ): ?array {
+        if ( empty( $this->term_cache[ $taxonomy ] ) ) {
+            return null;
+        }
         return $this->term_cache[ $taxonomy ][ $slug ] ?? null;
     }
 

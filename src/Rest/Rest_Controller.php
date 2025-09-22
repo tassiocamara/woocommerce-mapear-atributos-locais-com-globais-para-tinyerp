@@ -85,6 +85,27 @@ class Rest_Controller {
                 ],
             ]
         );
+
+        register_rest_route(
+            $this->namespace,
+            '/variations/update',
+            [
+                'methods'             => 'POST',
+                'callback'            => [ $this, 'variations_update' ],
+                'permission_callback' => [ $this, 'permissions_check' ],
+                'args'                => [
+                    'product_id' => [
+                        'type'              => 'integer',
+                        'required'          => true,
+                        'sanitize_callback' => 'absint',
+                    ],
+                    'taxonomies' => [
+                        'type'     => 'array',
+                        'required' => false,
+                    ],
+                ],
+            ]
+        );
     }
 
     public function discover( WP_REST_Request $request ): WP_REST_Response {
@@ -223,11 +244,52 @@ class Rest_Controller {
         return new WP_REST_Response( [ 'terms' => $data ] );
     }
 
+    public function variations_update( WP_REST_Request $request ): WP_REST_Response|WP_Error {
+        $corr_id    = uniqid( 'l2g_var_', true );
+        $product_id = (int) $request->get_param( 'product_id' );
+        $taxonomies = $request->get_param( 'taxonomies' );
+        if ( $product_id <= 0 ) {
+            return $this->rest_error( 'l2g_invalid_product', __( 'Produto inválido.', 'local2global' ), 400, $corr_id );
+        }
+        if ( null !== $taxonomies && ! is_array( $taxonomies ) ) {
+            return $this->rest_error( 'l2g_validation', __( 'Formato de taxonomies inválido.', 'local2global' ), 400, $corr_id );
+        }
+
+        $this->logger->info( 'variation.resync.request', [ 'corr_id' => $corr_id, 'product_id' => $product_id, 'tax_filter' => $taxonomies ] );
+        $result = $this->mapping->update_variations_only( $product_id, $taxonomies ? array_map( 'sanitize_key', $taxonomies ) : null, $corr_id );
+        if ( is_wp_error( $result ) ) {
+            $data = $result->get_error_data();
+            if ( is_array( $data ) && empty( $data['corr_id'] ) ) {
+                $data['corr_id'] = $corr_id;
+                if ( method_exists( $result, 'add_data' ) ) {
+                    $result->add_data( $data );
+                }
+            }
+            return $result;
+        }
+        return new WP_REST_Response( [ 'ok' => true, 'corr_id' => $corr_id, 'result' => $result ] );
+    }
+
     public function permissions_check(): bool|WP_Error {
         if ( current_user_can( 'manage_woocommerce' ) || current_user_can( 'edit_products' ) ) {
             return true;
         }
 
-        return new WP_Error( 'local2global_forbidden', __( 'Permissão insuficiente.', 'local2global' ), [ 'status' => 403 ] );
+    $user_id   = \get_current_user_id();
+        $caps      = [];
+        if ( $user_id ) {
+            $user = \get_user_by( 'id', $user_id );
+            if ( $user ) {
+                $caps = array_keys( array_filter( (array) $user->allcaps ) );
+            }
+        }
+
+        $this->logger->warning( 'permission.denied', [
+            'user_id' => $user_id,
+            'caps'    => $caps,
+            'needed'  => [ 'manage_woocommerce', 'edit_products' ],
+        ] );
+
+        return new WP_Error( 'local2global_forbidden', __( 'Permissão insuficiente.', 'local2global' ), [ 'status' => 403, 'user_id' => $user_id ] );
     }
 }
