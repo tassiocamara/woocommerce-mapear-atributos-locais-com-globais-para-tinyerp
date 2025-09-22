@@ -309,7 +309,15 @@ class Mapping_Service {
                     }
 
                     foreach ( $variation_jobs as $job ) {
-                        $variation_stats = $this->variations->update_variations( $product, $job['taxonomy'], $job['local_name'], $job['slug_map'], $corr_id );
+                        $variation_stats = $this->variations->update_variations(
+                            $product,
+                            $job['taxonomy'],
+                            $job['local_name'],
+                            $job['slug_map'],
+                            $corr_id,
+                            ! empty( $options['hydrate_variations'] ),
+                            ! empty( $options['aggressive_hydrate_variations'] )
+                        );
                         $results['variations'][ $job['taxonomy'] ] = $variation_stats;
                     }
 
@@ -338,9 +346,6 @@ class Mapping_Service {
                         'existing_terms' => $results['existing_terms'][$tax] ?? [],
                         'variations'     => $results['variations'][$tax] ?? null,
                     ];
-                    if ( isset( $summary[$tax]['variations']['reasons'] ) ) {
-                        $summary[$tax]['variation_reasons'] = $summary[$tax]['variations']['reasons'];
-                    }
                 }
                 $this->logger->info( 'apply.completed', [ 'updated' => count( $results['updated_attrs'] ), 'summary' => $summary ] );
 
@@ -409,11 +414,18 @@ class Mapping_Service {
     private function normalize_local_value( string $value ): string { return Value_Normalizer::normalize( $value ); }
 
     private function normalize_options( array $options ): array {
-        return [
-            'auto_create_terms' => ! empty( $options['auto_create_terms'] ),
-            'update_variations' => ! empty( $options['update_variations'] ),
-            'create_backup'     => ! empty( $options['create_backup'] ),
+        $normalized = [
+            'auto_create_terms'             => ! empty( $options['auto_create_terms'] ),
+            'update_variations'             => ! empty( $options['update_variations'] ),
+            'create_backup'                 => ! empty( $options['create_backup'] ),
+            'aggressive_hydrate_variations' => ! empty( $options['aggressive_hydrate_variations'] ),
         ];
+        if ( array_key_exists( 'hydrate_variations', $options ) ) {
+            $normalized['hydrate_variations'] = ! empty( $options['hydrate_variations'] );
+        } else {
+            $normalized['hydrate_variations'] = $normalized['update_variations'];
+        }
+        return $normalized;
     }
 
     private function build_context( int $product_id, ?string $corr_id, string $operation ): array {
@@ -529,10 +541,10 @@ class Mapping_Service {
      * @param string[]|null $only_taxonomies Lista opcional de taxonomias pa_ a limitar.
      * @return array{product_id:int, taxonomies: array<string, array{updated:int, skipped:int}>}|WP_Error
      */
-    public function update_variations_only( int $product_id, ?array $only_taxonomies = null, ?string $corr_id = null ): array|WP_Error {
+    public function update_variations_only( int $product_id, ?array $only_taxonomies = null, ?string $corr_id = null, bool $hydrate = false, bool $aggressive = false ): array|WP_Error {
         return $this->logger->scoped(
             $this->build_context( $product_id, $corr_id, 'variations_resync' ),
-            function () use ( $product_id, $only_taxonomies, $corr_id ) {
+            function () use ( $product_id, $only_taxonomies, $corr_id, $hydrate, $aggressive ) {
                 $product = wc_get_product( $product_id );
                 if ( ! $product instanceof WC_Product ) {
                     return $this->error( 'l2g_invalid_product', __( 'Produto inválido.', 'local2global' ), 400, $corr_id );
@@ -545,6 +557,7 @@ class Mapping_Service {
                 $results    = [];
                 $this->logger->info( 'variation.resync.start', [ 'attribute_count' => count( $attributes ), 'filter' => $only_taxonomies ] );
 
+                $term_cache = [];
                 foreach ( $attributes as $attr ) {
                     if ( ! $attr instanceof WC_Product_Attribute ) { continue; }
                     $tax = $attr->get_name();
@@ -554,21 +567,32 @@ class Mapping_Service {
                     $options = $attr->get_options(); // term IDs
                     $slug_map = [];
                     foreach ( $options as $term_id ) {
-                        $term = get_term( (int) $term_id, $tax );
-                        if ( $term && ! is_wp_error( $term ) ) {
-                            $slug_map[ Value_Normalizer::normalize( $term->name ) ] = $term->slug;
+                        $term_id_int = (int) $term_id;
+                        if ( isset( $term_cache[ $tax ][ $term_id_int ] ) ) {
+                            $term_obj = $term_cache[ $tax ][ $term_id_int ];
+                        } else {
+                            $term_obj = get_term( $term_id_int, $tax );
+                            if ( $term_obj && ! is_wp_error( $term_obj ) ) {
+                                $term_cache[ $tax ][ $term_id_int ] = $term_obj;
+                            } else {
+                                $term_obj = null;
+                            }
+                        }
+                        if ( $term_obj ) {
+                            $slug_map[ Value_Normalizer::normalize( $term_obj->name ) ] = $term_obj->slug;
                         }
                     }
                     // Tenta descobrir nome local original para montar a chave de meta. Se não encontrar, usa tax sem prefixo.
                     $local_guess = preg_replace( '/^pa_/', '', $tax );
-                    $stats = $this->variations->update_variations( $product, $tax, $local_guess, $slug_map, $corr_id );
+                    $stats = $this->variations->update_variations( $product, $tax, $local_guess, $slug_map, $corr_id, $hydrate, $aggressive );
                     $results[ $tax ] = $stats;
                 }
                 // Agrega razões
-                $aggregate = [ 'updated' => 0, 'skipped' => 0, 'reasons' => [ 'missing_source_meta' => 0, 'no_slug_match' => 0, 'already_ok' => 0 ] ];
+                $aggregate = [ 'updated' => 0, 'skipped' => 0, 'total_variations' => 0, 'updated_pct' => 0.0, 'reasons' => [ 'missing_source_meta' => 0, 'no_slug_match' => 0, 'already_ok' => 0, 'hydrated' => 0, 'inferred' => 0, 'ambiguous_inference' => 0 ] ];
                 foreach ( $results as $tax => $stats ) {
                     $aggregate['updated'] += (int) ( $stats['updated'] ?? 0 );
                     $aggregate['skipped'] += (int) ( $stats['skipped'] ?? 0 );
+                    $aggregate['total_variations'] += (int) ( $stats['total_variations'] ?? 0 );
                     if ( isset( $stats['reasons'] ) && is_array( $stats['reasons'] ) ) {
                         foreach ( $stats['reasons'] as $reason => $count ) {
                             if ( isset( $aggregate['reasons'][ $reason ] ) ) {
@@ -579,6 +603,7 @@ class Mapping_Service {
                         }
                     }
                 }
+                $aggregate['updated_pct'] = $aggregate['total_variations'] > 0 ? round( ( $aggregate['updated'] / $aggregate['total_variations'] ) * 100, 2 ) : 0.0;
                 $this->logger->info( 'variation.resync.summary', [ 'aggregate' => $aggregate, 'taxonomies' => array_keys( $results ) ] );
                 $this->logger->info( 'variation.resync.completed', [ 'taxonomies' => $results ] );
                 return [ 'product_id' => $product_id, 'taxonomies' => $results, 'aggregate' => $aggregate ];

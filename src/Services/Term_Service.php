@@ -107,7 +107,10 @@ class Term_Service {
 
         $results = [];
 
-        foreach ( $terms as $term_config ) {
+    // Mantém controle de slugs reutilizados para evitar logs duplicados (lookup + cache)
+    $logged_reuse = [];
+
+    foreach ( $terms as $term_config ) {
             $local_value = $term_config['local_value'];
             $slug        = sanitize_title( $term_config['term_slug'] ?? $term_config['term_name'] ?? $local_value );
             $existing    = $this->get_cached_term( $taxonomy, $slug );
@@ -131,7 +134,10 @@ class Term_Service {
                         'term_id' => (int) $term->term_id,
                         'slug'    => (string) $term->slug,
                     ];
-                    $this->logger->info( 'term.reuse', [ 'taxonomy' => $taxonomy, 'slug' => $slug, 'term_id' => (int) $term->term_id, 'source' => 'lookup' ] );
+                    if ( empty( $logged_reuse[ $taxonomy ][ $slug ] ) ) {
+                        $this->logger->info( 'term.reuse', [ 'taxonomy' => $taxonomy, 'slug' => $slug, 'term_id' => (int) $term->term_id, 'source' => 'lookup' ] );
+                        $logged_reuse[ $taxonomy ][ $slug ] = true;
+                    }
                 }
             }
 
@@ -145,15 +151,33 @@ class Term_Service {
                 $result    = \wp_insert_term( $term_name, $taxonomy, [ 'slug' => $slug ] );
 
                 if ( is_wp_error( $result ) ) {
-                    throw new RuntimeException( $result->get_error_message() );
+                    // Se já existe, converte em reuse silencioso
+                    if ( 'term_exists' === $result->get_error_code() ) {
+                        $existing_id = (int) $result->get_error_data();
+                        $term_obj    = \get_term( $existing_id, $taxonomy );
+                        if ( $term_obj && ! is_wp_error( $term_obj ) ) {
+                            $existing = [
+                                'term_id' => (int) $term_obj->term_id,
+                                'slug'    => (string) $term_obj->slug,
+                            ];
+                            if ( empty( $logged_reuse[ $taxonomy ][ $slug ] ) ) {
+                                $this->logger->info( 'term.reuse', [ 'taxonomy' => $taxonomy, 'slug' => $term_obj->slug, 'term_id' => (int) $term_obj->term_id, 'source' => 'term_exists' ] );
+                                $logged_reuse[ $taxonomy ][ $slug ] = true;
+                            }
+                        } else {
+                            throw new RuntimeException( $result->get_error_message() );
+                        }
+                    } else {
+                        throw new RuntimeException( $result->get_error_message() );
+                    }
+                } else {
+                    $existing = [
+                        'term_id' => (int) $result['term_id'],
+                        'slug'    => (string) $slug,
+                    ];
+                    $created  = true;
+                    $this->logger->info( 'term.created', [ 'taxonomy' => $taxonomy, 'slug' => $slug, 'term_id' => (int) $result['term_id'] ] );
                 }
-
-                $existing = [
-                    'term_id' => (int) $result['term_id'],
-                    'slug'    => (string) $slug,
-                ];
-                $created  = true;
-                $this->logger->info( 'term.created', [ 'taxonomy' => $taxonomy, 'slug' => $slug, 'term_id' => (int) $result['term_id'] ] );
             }
 
             $this->set_cached_term( $taxonomy, $existing['slug'], $existing );
@@ -164,8 +188,9 @@ class Term_Service {
                 'slug'        => $existing['slug'],
                 'created'     => $created,
             ];
-            if ( ! $created ) {
-                $this->logger->info( 'term.reuse', [ 'taxonomy' => $taxonomy, 'slug' => $existing['slug'], 'term_id' => $existing['term_id'], 'source' => 'cache_or_lookup' ] );
+            if ( ! $created && empty( $logged_reuse[ $taxonomy ][ $existing['slug'] ] ) ) {
+                $this->logger->info( 'term.reuse', [ 'taxonomy' => $taxonomy, 'slug' => $existing['slug'], 'term_id' => $existing['term_id'], 'source' => 'cache' ] );
+                $logged_reuse[ $taxonomy ][ $existing['slug'] ] = true;
             }
         }
 
