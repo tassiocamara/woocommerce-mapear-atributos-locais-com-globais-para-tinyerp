@@ -103,16 +103,28 @@ class CLI_Command extends WP_CLI_Command {
         ];
 
         foreach ( $products as $product_id ) {
-            try {
-                if ( ! empty( $assoc_args['dry-run'] ) ) {
-                    $result = $this->mapping->dry_run( (int) $product_id, $mapping, $options );
-                    \WP_CLI::log( sprintf( 'Dry-run para o produto %d: %s', $product_id, wp_json_encode( $result ) ) );
-                } else {
-                    $result = $this->mapping->apply( (int) $product_id, $mapping, $options );
-                    \WP_CLI::success( sprintf( 'Mapeamento aplicado ao produto %d: %s', $product_id, wp_json_encode( $result ) ) );
+            $corr_id = uniqid( 'l2g_cli_', true );
+
+            if ( ! empty( $assoc_args['dry-run'] ) ) {
+                $result = $this->mapping->dry_run( (int) $product_id, $mapping, $options, $corr_id );
+
+                if ( is_wp_error( $result ) ) {
+                    $data = $result->get_error_data();
+                    \WP_CLI::warning( sprintf( 'Dry-run falhou para o produto %d (%s): %s', $product_id, $data['corr_id'] ?? $corr_id, $result->get_error_message() ) );
+                    continue;
                 }
-            } catch ( \Throwable $error ) {
-                \WP_CLI::warning( sprintf( 'Erro ao processar o produto %d: %s', $product_id, $error->getMessage() ) );
+
+                \WP_CLI::log( sprintf( 'Dry-run para o produto %d (%s): %s', $product_id, $corr_id, wp_json_encode( $result ) ) );
+            } else {
+                $result = $this->mapping->apply( (int) $product_id, $mapping, $options, $corr_id );
+
+                if ( is_wp_error( $result ) ) {
+                    $data = $result->get_error_data();
+                    \WP_CLI::warning( sprintf( 'Erro ao processar o produto %d (%s): %s', $product_id, $data['corr_id'] ?? $corr_id, $result->get_error_message() ) );
+                    continue;
+                }
+
+                \WP_CLI::success( sprintf( 'Mapeamento aplicado ao produto %d (%s): %s', $product_id, $corr_id, wp_json_encode( $result ) ) );
             }
         }
     }

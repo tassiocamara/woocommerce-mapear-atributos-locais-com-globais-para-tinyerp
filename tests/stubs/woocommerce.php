@@ -2,6 +2,38 @@
 
 declare(strict_types=1);
 
+class WP_Error {
+    private string $code;
+    private string $message;
+    private array $data;
+
+    public function __construct( string $code, string $message = '', array $data = [] ) {
+        $this->code    = $code;
+        $this->message = $message;
+        $this->data    = $data;
+    }
+
+    public function get_error_code(): string {
+        return $this->code;
+    }
+
+    public function get_error_message(): string {
+        return $this->message;
+    }
+
+    public function get_error_data(): array {
+        return $this->data;
+    }
+
+    public function add_data( array $data ): void {
+        $this->data = $data;
+    }
+}
+
+function is_wp_error( $value ): bool {
+    return $value instanceof WP_Error;
+}
+
 interface WC_Logger_Interface {
     public function emergency( $message, array $context = [] );
 
@@ -236,33 +268,39 @@ function wc_delete_product_transients( int $product_id ): void {
 }
 
 function wc_get_logger(): WC_Logger_Interface {
-    return new class() implements WC_Logger_Interface {
-        public array $logs = [];
+    global $test_wc_logger;
 
-        public function emergency( $message, array $context = [] ) {}
+    if ( ! $test_wc_logger ) {
+        $test_wc_logger = new class() implements WC_Logger_Interface {
+            public array $logs = [];
 
-        public function alert( $message, array $context = [] ) {}
+            public function emergency( $message, array $context = [] ) {}
 
-        public function critical( $message, array $context = [] ) {}
+            public function alert( $message, array $context = [] ) {}
 
-        public function error( $message, array $context = [] ): void {
-            $this->logs[] = [ 'level' => 'error', 'message' => (string) $message, 'context' => $context ];
-        }
+            public function critical( $message, array $context = [] ) {}
 
-        public function warning( $message, array $context = [] ): void {
-            $this->logs[] = [ 'level' => 'warning', 'message' => (string) $message, 'context' => $context ];
-        }
+            public function error( $message, array $context = [] ): void {
+                $this->logs[] = [ 'level' => 'error', 'message' => (string) $message, 'context' => $context ];
+            }
 
-        public function notice( $message, array $context = [] ) {}
+            public function warning( $message, array $context = [] ): void {
+                $this->logs[] = [ 'level' => 'warning', 'message' => (string) $message, 'context' => $context ];
+            }
 
-        public function info( $message, array $context = [] ): void {
-            $this->logs[] = [ 'level' => 'info', 'message' => $message, 'context' => $context ];
-        }
+            public function notice( $message, array $context = [] ) {}
 
-        public function debug( $message, array $context = [] ) {}
+            public function info( $message, array $context = [] ): void {
+                $this->logs[] = [ 'level' => 'info', 'message' => $message, 'context' => $context ];
+            }
 
-        public function log( $level, $message, array $context = [] ) {}
-    };
+            public function debug( $message, array $context = [] ) {}
+
+            public function log( $level, $message, array $context = [] ) {}
+        };
+    }
+
+    return $test_wc_logger;
 }
 
 function wc_get_product( int $product_id ): ?WC_Product {
@@ -280,3 +318,4 @@ function register_test_product( WC_Product $product ): void {
 $test_registered_taxonomies = [ 'pa_cor', 'pa_tamanho' ];
 $test_products              = [];
 $test_object_terms          = [];
+$test_wc_logger             = null;

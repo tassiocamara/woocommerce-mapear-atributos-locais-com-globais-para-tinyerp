@@ -520,39 +520,85 @@
         }).then((result) => {
             state.dryRun = result;
         }).catch((error) => {
-            window.alert(error.message || error);
+            const formatted = formatApiError(error);
+            window.alert(formatted.message);
         }).finally(() => {
             nextButton.disabled = false;
             renderStep();
         });
     }
 
-    function applyMapping() {
+    async function applyMapping() {
         nextButton.disabled = true;
         prevButton.disabled = true;
         state.log.push(__('Iniciando aplicação...', 'local2global'));
         renderStep();
 
-        apiFetch({
-            path: '/local2global/v1/map',
-            method: 'POST',
-            data: {
-                product_id: state.productId,
-                mapping: serializeMapping(),
-                options: state.options,
-                mode: 'apply',
-            },
-        }).then((result) => {
-            state.log.push(__('Mapeamento concluído.', 'local2global'));
-            state.log.push(JSON.stringify(result));
-        }).catch((error) => {
-            state.log.push(__('Erro: ', 'local2global') + (error.message || error));
-        }).finally(() => {
+        try {
+            const response = await apiFetch({
+                path: '/local2global/v1/map',
+                method: 'POST',
+                parse: false,
+                data: {
+                    product_id: state.productId,
+                    mapping: serializeMapping(),
+                    options: state.options,
+                    mode: 'apply',
+                },
+            });
+
+            let data = null;
+            try {
+                data = await response.json();
+            } catch (parseError) {
+                data = null;
+            }
+
+            if (!response.ok) {
+                throw buildApiError(response.status, data);
+            }
+
+            const corr = data?.corr_id ? ` (id: ${data.corr_id})` : '';
+            state.log.push(__('Mapeamento concluído.', 'local2global') + corr);
+            if (data?.result) {
+                state.log.push(JSON.stringify(data.result, null, 2));
+            }
+        } catch (error) {
+            const formatted = formatApiError(error);
+            state.log.push(__('Erro: ', 'local2global') + formatted.message);
+            if (formatted.details) {
+                state.log.push(formatted.details);
+            }
+        } finally {
             nextButton.disabled = false;
             prevButton.disabled = true;
             nextButton.textContent = __('Fechar', 'local2global');
             renderStep();
-        });
+        }
+    }
+
+    function buildApiError(status, payload) {
+        const error = new Error(payload?.message || `HTTP ${status}`);
+        error.corrId = payload?.data?.corr_id || payload?.corr_id || null;
+        error.details = payload?.data?.details || payload?.details || null;
+        return error;
+    }
+
+    function formatApiError(error) {
+        const corr = error?.corrId || error?.data?.corr_id || error?.data?.data?.corr_id || null;
+        let message = error?.message || __('Erro inesperado.', 'local2global');
+        if (corr) {
+            message += ` (id: ${corr})`;
+        }
+
+        let details = null;
+        if (typeof error?.details === 'string') {
+            details = error.details;
+        } else if (typeof error?.data?.details === 'string') {
+            details = error.data.details;
+        }
+
+        return { message, details };
     }
 
     function serializeMapping() {

@@ -5,11 +5,120 @@ declare(strict_types=1);
 require __DIR__ . '/stubs/woocommerce.php';
 require __DIR__ . '/../src/Services/Mapping_Service.php';
 require __DIR__ . '/../src/Services/Variation_Service.php';
+require __DIR__ . '/../src/Services/Term_Service.php';
+require __DIR__ . '/../src/Services/Templates_Service.php';
+require __DIR__ . '/../src/Services/Rollback_Service.php';
 require __DIR__ . '/../src/Utils/Logger.php';
 
 use Evolury\Local2Global\Services\Mapping_Service;
+use Evolury\Local2Global\Services\Rollback_Service;
+use Evolury\Local2Global\Services\Templates_Service;
+use Evolury\Local2Global\Services\Term_Service;
 use Evolury\Local2Global\Services\Variation_Service;
 use Evolury\Local2Global\Utils\Logger;
+
+class StubTermService extends Term_Service {
+    public array $attributes = [];
+    public array $terms = [];
+    public ?RuntimeException $attributeException = null;
+    public ?RuntimeException $termException = null;
+
+    public function __construct( Logger $logger ) {
+        parent::__construct( $logger );
+    }
+
+    public function ensure_global_attribute( string $target_taxonomy, string $label, bool $create_if_missing = false, array $args = [] ): array {
+        if ( $this->attributeException ) {
+            throw $this->attributeException;
+        }
+
+        $taxonomy = sanitize_key( $target_taxonomy );
+        if ( '' === $taxonomy ) {
+            $taxonomy = 'pa_default';
+        }
+        if ( ! str_starts_with( $taxonomy, 'pa_' ) ) {
+            $taxonomy = 'pa_' . $taxonomy;
+        }
+
+        return $this->attributes[ $taxonomy ] ?? [ 'attribute_id' => 9, 'taxonomy' => $taxonomy ];
+    }
+
+    public function ensure_terms( string $taxonomy, array $terms, bool $allow_creation ): array {
+        if ( $this->termException ) {
+            throw $this->termException;
+        }
+
+        if ( isset( $this->terms[ $taxonomy ] ) ) {
+            return $this->terms[ $taxonomy ];
+        }
+
+        return array_map(
+            static fn( array $term ) => [
+                'local_value' => $term['local_value'],
+                'term_id'     => (int) ( $term['term_id'] ?? random_int( 100, 999 ) ),
+                'slug'        => $term['term_slug'] ?? $term['local_value'],
+                'created'     => (bool) ( $term['created'] ?? false ),
+            ],
+            $terms
+        );
+    }
+}
+
+class StubTemplatesService extends Templates_Service {
+    public array $saved = [];
+
+    public function __construct( Logger $logger ) {
+        parent::__construct( $logger );
+    }
+
+    public function get_templates(): array {
+        return $this->saved;
+    }
+
+    public function get_template_for_label( string $label ): ?array {
+        return $this->saved[ $label ] ?? null;
+    }
+
+    public function save_template( string $label, array $config ): void {
+        $this->saved[ $label ] = $config;
+    }
+}
+
+class StubRollbackService extends Rollback_Service {
+    public bool $fail = false;
+    public array $backups = [];
+
+    public function __construct( Logger $logger ) {
+        parent::__construct( $logger );
+    }
+
+    public function create_backup( \WC_Product $product, array $original_attributes ): string {
+        if ( $this->fail ) {
+            throw new RuntimeException( 'backup failed' );
+        }
+
+        $id                = 'stub-' . $product->get_id();
+        $this->backups[]   = [ 'product_id' => $product->get_id(), 'count' => count( $original_attributes ) ];
+
+        return $id;
+    }
+}
+
+class FailingVariationService extends Variation_Service {
+    public bool $shouldFail = false;
+
+    public function __construct( Logger $logger ) {
+        parent::__construct( $logger );
+    }
+
+    public function update_variations( \WC_Product $product, string $taxonomy, string $local_name, array $slug_map, ?string $corr_id = null ): array {
+        if ( $this->shouldFail ) {
+            throw new RuntimeException( 'variation failure' );
+        }
+
+        return parent::update_variations( $product, $taxonomy, $local_name, $slug_map, $corr_id );
+    }
+}
 
 final class TestRunner {
     private int $assertions = 0;
@@ -18,6 +127,9 @@ final class TestRunner {
         $this->testReplaceAttributeWithObject();
         $this->testReplaceAttributeWithLegacyArray();
         $this->testUpdateVariations();
+        $this->testApplySuccess();
+        $this->testApplyValidationError();
+        $this->testApplyInternalError();
 
         echo sprintf( "All %d assertions passed.\n", $this->assertions );
     }
@@ -45,6 +157,23 @@ final class TestRunner {
         $service    = $reflection->newInstanceWithoutConstructor();
 
         return $service;
+    }
+
+    /**
+     * @return array{0:Mapping_Service,1:StubTermService,2:FailingVariationService,3:StubTemplatesService,4:StubRollbackService,5:Logger}
+     */
+    private function createMappingServiceWithDependencies(): array {
+        global $test_wc_logger;
+        $test_wc_logger = null;
+
+        $logger     = new Logger();
+        $terms      = new StubTermService( $logger );
+        $variations = new FailingVariationService( $logger );
+        $templates  = new StubTemplatesService( $logger );
+        $rollback   = new StubRollbackService( $logger );
+        $service    = new Mapping_Service( $terms, $variations, $templates, $rollback, $logger );
+
+        return [ $service, $terms, $variations, $templates, $rollback, $logger ];
     }
 
     private function invokeReplaceAttribute( Mapping_Service $service, WC_Product $product, string $local, string $taxonomy, int $attribute_id, array $term_ids ): bool {
@@ -130,6 +259,120 @@ final class TestRunner {
         $this->assertSame( 'azul-marinho', $meta['attribute_pa_cor'] ?? null, 'Variation meta should be updated with slug' );
         $this->assertTrue( ! isset( $meta['attribute_cor'] ), 'Legacy variation meta should be removed' );
         $this->assertTrue( in_array( $product->get_id(), WC_Product_Variable::$synced_products, true ), 'Variable product should be synced' );
+    }
+
+    private function testApplySuccess(): void {
+        global $test_products, $test_object_terms, $test_wc_logger;
+        $test_products     = [];
+        $test_object_terms = [];
+        $test_wc_logger    = null;
+
+        $attribute = new WC_Product_Attribute();
+        $attribute->set_name( 'Cor' );
+        $attribute->set_options( [ 'Azul', 'Preto' ] );
+
+        $product = new WC_Product( [ 'cor' => $attribute ], 501 );
+        register_test_product( $product );
+
+        [ $service, $terms, $variations, $templates ] = $this->createMappingServiceWithDependencies();
+
+        $terms->attributes['pa_cor'] = [ 'attribute_id' => 31, 'taxonomy' => 'pa_cor' ];
+        $terms->terms['pa_cor']       = [
+            [ 'local_value' => 'Azul', 'term_id' => 11, 'slug' => 'azul', 'created' => false ],
+            [ 'local_value' => 'Preto', 'term_id' => 12, 'slug' => 'preto', 'created' => true ],
+        ];
+
+        $mapping = [
+            [
+                'local_attr'    => 'Cor',
+                'local_label'   => 'Cor',
+                'target_tax'    => 'pa_cor',
+                'terms'         => [
+                    [ 'local_value' => 'Azul' ],
+                    [ 'local_value' => 'Preto', 'create' => true ],
+                ],
+                'save_template' => true,
+            ],
+        ];
+
+        $result = $service->apply( $product->get_id(), $mapping, [ 'auto_create_terms' => true ], 'l2g_success' );
+
+        $this->assertTrue( ! is_wp_error( $result ), 'Apply should succeed' );
+        $this->assertSame( [ 'pa_cor' ], $result['updated_attrs'], 'Updated attributes mismatch' );
+        $this->assertTrue( $product->was_saved(), 'Product should be saved' );
+        $this->assertTrue( isset( $templates->saved['Cor'] ), 'Template should be stored' );
+        $this->assertSame( 1, count( $test_object_terms ), 'Terms should be assigned once' );
+        $this->assertSame( [ 11, 12 ], $test_object_terms[0]['terms'], 'Assigned terms mismatch' );
+
+        global $test_wc_logger;
+        $this->assertSame( 'local2global', $test_wc_logger->logs[0]['context']['source'] ?? null, 'Log source mismatch' );
+        $has_corr = false;
+        foreach ( $test_wc_logger->logs as $entry ) {
+            if ( ( $entry['context']['corr_id'] ?? null ) === 'l2g_success' ) {
+                $has_corr = true;
+            }
+        }
+        $this->assertTrue( $has_corr, 'Correlation id should appear in logs' );
+    }
+
+    private function testApplyValidationError(): void {
+        global $test_products;
+        $test_products = [];
+
+        $product = new WC_Product( [ 'cor' => new WC_Product_Attribute() ], 502 );
+        register_test_product( $product );
+
+        [ $service ] = $this->createMappingServiceWithDependencies();
+
+        $result = $service->apply( $product->get_id(), [ [ 'local_attr' => 'Cor', 'target_tax' => '' ] ], [], 'l2g_validation' );
+
+        $this->assertTrue( is_wp_error( $result ), 'Result should be WP_Error' );
+        $this->assertSame( 'l2g_validation', $result->get_error_code(), 'Error code mismatch' );
+        $data = $result->get_error_data();
+        $this->assertSame( 400, $data['status'] ?? null, 'Status should be 400' );
+        $this->assertSame( 'l2g_validation', $data['corr_id'] ?? null, 'Correlation id mismatch' );
+    }
+
+    private function testApplyInternalError(): void {
+        global $test_products, $test_registered_taxonomies;
+        $test_products = [];
+        if ( ! in_array( 'pa_cor', $test_registered_taxonomies, true ) ) {
+            $test_registered_taxonomies[] = 'pa_cor';
+        }
+
+        $attribute = new WC_Product_Attribute();
+        $attribute->set_name( 'Cor' );
+
+        $product = new WC_Product_Variable( [ 'cor' => $attribute ], 503 );
+        register_test_product( $product );
+
+        [ $service, $terms, $variations ] = $this->createMappingServiceWithDependencies();
+        $variations->shouldFail          = true;
+
+        $terms->attributes['pa_cor'] = [ 'attribute_id' => 40, 'taxonomy' => 'pa_cor' ];
+        $terms->terms['pa_cor']       = [
+            [ 'local_value' => 'Azul', 'term_id' => 13, 'slug' => 'azul', 'created' => false ],
+        ];
+
+        $result = $service->apply(
+            $product->get_id(),
+            [
+                [
+                    'local_attr'  => 'Cor',
+                    'target_tax'  => 'pa_cor',
+                    'terms'       => [ [ 'local_value' => 'Azul' ] ],
+                ],
+            ],
+            [ 'auto_create_terms' => true, 'update_variations' => true ],
+            'l2g_fail'
+        );
+
+        $this->assertTrue( is_wp_error( $result ), 'Result should be WP_Error' );
+        $this->assertSame( 'l2g_apply_failed', $result->get_error_code(), 'Error code mismatch' );
+        $data = $result->get_error_data();
+        $this->assertSame( 500, $data['status'] ?? null, 'Status should be 500' );
+        $this->assertSame( 'l2g_fail', $data['corr_id'] ?? null, 'Correlation id mismatch' );
+        $this->assertSame( 'variation failure', $data['details'] ?? null, 'Details should expose root cause' );
     }
 }
 

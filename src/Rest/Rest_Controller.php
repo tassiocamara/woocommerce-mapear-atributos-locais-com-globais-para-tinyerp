@@ -6,6 +6,7 @@ namespace Evolury\Local2Global\Rest;
 
 use Evolury\Local2Global\Services\Discovery_Service;
 use Evolury\Local2Global\Services\Mapping_Service;
+use Evolury\Local2Global\Utils\Logger;
 use RuntimeException;
 use Throwable;
 use WP_Error;
@@ -15,7 +16,7 @@ use WP_REST_Response;
 class Rest_Controller {
     private string $namespace = 'local2global/v1';
 
-    public function __construct( private Discovery_Service $discovery, private Mapping_Service $mapping ) {}
+    public function __construct( private Discovery_Service $discovery, private Mapping_Service $mapping, private Logger $logger ) {}
 
     public function register_routes(): void {
         register_rest_route(
@@ -94,41 +95,100 @@ class Rest_Controller {
     }
 
     public function map( WP_REST_Request $request ): WP_REST_Response|WP_Error {
-        $product_id = (int) $request->get_param( 'product_id' );
-        $mapping    = $request->get_param( 'mapping' );
-        $options    = $request->get_param( 'options' );
-        $mode       = strtolower( (string) $request->get_param( 'mode' ) );
+        $corr_id = uniqid( 'l2g_', true );
 
-        if ( $product_id <= 0 ) {
-            return new WP_Error( 'local2global_invalid_product', __( 'Produto inválido.', 'local2global' ), [ 'status' => 400 ] );
-        }
+        return $this->logger->scoped(
+            [ 'corr_id' => $corr_id, 'endpoint' => 'map' ],
+            function () use ( $request, $corr_id ) {
+                $product_id = (int) $request->get_param( 'product_id' );
+                $mapping    = $request->get_param( 'mapping' );
+                $options    = $request->get_param( 'options' );
+                $mode       = strtolower( (string) $request->get_param( 'mode' ) );
 
-        if ( ! is_array( $mapping ) || empty( $mapping ) ) {
-            return new WP_Error( 'local2global_invalid_mapping', __( 'Mapeamento não informado.', 'local2global' ), [ 'status' => 400 ] );
-        }
+                if ( $product_id <= 0 ) {
+                    $this->logger->warning( 'map.validation_failed', [ 'reason' => 'invalid_product', 'product_id' => $product_id ] );
 
-        if ( null !== $options && ! is_array( $options ) ) {
-            return new WP_Error( 'local2global_invalid_options', __( 'Formato de opções inválido.', 'local2global' ), [ 'status' => 400 ] );
-        }
+                    return $this->rest_error( 'l2g_invalid_product', __( 'Produto inválido.', 'local2global' ), 400, $corr_id );
+                }
 
-        $options = $options ? (array) $options : [];
+                if ( ! is_array( $mapping ) || empty( $mapping ) ) {
+                    $this->logger->warning( 'map.validation_failed', [ 'reason' => 'invalid_mapping', 'product_id' => $product_id ] );
 
-        try {
-            if ( 'apply' === $mode ) {
-                $result = $this->mapping->apply( $product_id, $mapping, $options );
-            } else {
-                $result = $this->mapping->dry_run( $product_id, $mapping, $options );
+                    return $this->rest_error( 'l2g_validation', __( 'Mapeamento não informado.', 'local2global' ), 400, $corr_id );
+                }
+
+                if ( null !== $options && ! is_array( $options ) && ! is_object( $options ) ) {
+                    $this->logger->warning( 'map.validation_failed', [ 'reason' => 'invalid_options', 'product_id' => $product_id ] );
+
+                    return $this->rest_error( 'l2g_validation', __( 'Formato de opções inválido.', 'local2global' ), 400, $corr_id );
+                }
+
+                $options = $options ? (array) $options : [];
+
+                $this->logger->info(
+                    'map.request_received',
+                    [
+                        'product_id' => $product_id,
+                        'mode'       => $mode ?: 'apply',
+                        'mapping'    => array_map( static fn( $item ) => array_intersect_key( (array) $item, [ 'local_attr' => true, 'target_tax' => true ] ), $mapping ),
+                    ]
+                );
+
+                try {
+                    if ( 'apply' === $mode ) {
+                        $result = $this->mapping->apply( $product_id, (array) $mapping, $options, $corr_id );
+                    } else {
+                        $result = $this->mapping->dry_run( $product_id, (array) $mapping, $options, $corr_id );
+                    }
+
+                    if ( is_wp_error( $result ) ) {
+                        $data = $result->get_error_data() ?: [];
+                        if ( is_array( $data ) && empty( $data['corr_id'] ) ) {
+                            $data['corr_id'] = $corr_id;
+                            if ( method_exists( $result, 'add_data' ) ) {
+                                $result->add_data( $data );
+                            }
+                        }
+
+                        return $result;
+                    }
+
+                    return rest_ensure_response(
+                        [
+                            'ok'       => true,
+                            'corr_id'  => $corr_id,
+                            'result'   => $result,
+                        ]
+                    );
+                } catch ( RuntimeException $exception ) {
+                    $this->logger->warning( 'map.runtime_error', [ 'exception' => $exception ] );
+
+                    return $this->rest_error(
+                        'l2g_validation',
+                        $exception->getMessage(),
+                        400,
+                        $corr_id,
+                        [ 'details' => $exception->getMessage() ]
+                    );
+                } catch ( Throwable $exception ) {
+                    $this->logger->error( 'map.unhandled_exception', [ 'exception' => $exception, 'product_id' => $product_id ] );
+
+                    return $this->rest_error(
+                        'l2g_apply_failed',
+                        sprintf( __( 'Falha ao processar o mapeamento: %s', 'local2global' ), $exception->getMessage() ),
+                        500,
+                        $corr_id,
+                        [ 'details' => $exception->getMessage() ]
+                    );
+                }
             }
-        } catch ( RuntimeException $exception ) {
-            return new WP_Error( 'local2global_error', $exception->getMessage(), [ 'status' => 400 ] );
-        } catch ( Throwable $exception ) {
-            return new WP_Error( 'local2global_error', __( 'Erro ao processar o mapeamento.', 'local2global' ), [
-                'status'  => 500,
-                'details' => $exception->getMessage(),
-            ] );
-        }
+        );
+    }
 
-        return new WP_REST_Response( $result );
+    private function rest_error( string $code, string $message, int $status, string $corr_id, array $details = [] ): WP_Error {
+        $data              = array_merge( $details, [ 'status' => $status, 'corr_id' => $corr_id ] );
+
+        return new WP_Error( $code, $message, $data );
     }
 
     public function terms( WP_REST_Request $request ): WP_REST_Response {
