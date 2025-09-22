@@ -393,15 +393,18 @@
             return;
         }
 
-        if (state.dryRun.errors.length) {
-            const errors = document.createElement('div');
-            errors.className = 'notice notice-error';
-            errors.innerHTML = '<p><strong>' + __('Problemas encontrados:', 'local2global') + '</strong></p><ul>' +
-                state.dryRun.errors.map((err) => '<li>' + escapeHtml(err) + '</li>').join('') + '</ul>';
-            container.appendChild(errors);
+        const preview = state.dryRun;
+        const issues = Array.isArray(preview?.errors) ? preview.errors : [];
+
+        if (issues.length) {
+            const errorsBox = document.createElement('div');
+            errorsBox.className = 'notice notice-error';
+            errorsBox.innerHTML = '<p><strong>' + __('Problemas encontrados:', 'local2global') + '</strong></p><ul>' +
+                issues.map((err) => '<li>' + escapeHtml(err) + '</li>').join('') + '</ul>';
+            container.appendChild(errorsBox);
         }
 
-        state.dryRun.attributes.forEach((attr) => {
+        (preview.attributes || []).forEach((attr) => {
             const section = document.createElement('section');
             section.innerHTML = '<h3>' + escapeHtml(attr.local_label) + '</h3>';
             const summary = document.createElement('div');
@@ -518,7 +521,8 @@
                 mode: 'dry-run',
             },
         }).then((result) => {
-            state.dryRun = result;
+            state.dryRun = result?.result || result;
+            state.dryRunCorrId = result?.corr_id || null;
         }).catch((error) => {
             const formatted = formatApiError(error);
             window.alert(formatted.message);
