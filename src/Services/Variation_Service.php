@@ -16,7 +16,7 @@ class Variation_Service {
      * @param array<string, string> $slug_map
      * @return array{updated:int, skipped:int}
      */
-    public function update_variations( WC_Product $product, string $taxonomy, string $local_name, array $slug_map ): array {
+    public function update_variations( WC_Product $product, string $taxonomy, string $local_name, array $slug_map, ?string $corr_id = null ): array {
         if ( ! $product->is_type( 'variable' ) ) {
             return [ 'updated' => 0, 'skipped' => 0 ];
         }
@@ -55,12 +55,19 @@ class Variation_Service {
             WC_Product_Variable::sync( $product, true );
         }
 
-        $this->logger->info( 'Variações atualizadas.', [
+        $context = [
             'product_id' => $product->get_id(),
             'taxonomy'   => $taxonomy,
+            'local_attr' => $local_name,
             'updated'    => $updated,
             'skipped'    => $skipped,
-        ] );
+        ];
+
+        if ( $corr_id ) {
+            $context['corr_id'] = $corr_id;
+        }
+
+        $this->logger->info( 'Variações atualizadas.', $context );
 
         return [ 'updated' => $updated, 'skipped' => $skipped ];
     }

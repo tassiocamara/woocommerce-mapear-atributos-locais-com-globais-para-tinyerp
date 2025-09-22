@@ -6,8 +6,11 @@ namespace Evolury\Local2Global\Services;
 
 use Evolury\Local2Global\Utils\Logger;
 use RuntimeException;
+use Throwable;
 use WC_Product;
 use WC_Product_Attribute;
+use WC_Product_Variable;
+use WP_Error;
 
 class Mapping_Service {
     public function __construct(
@@ -18,149 +21,297 @@ class Mapping_Service {
         private Logger $logger
     ) {}
 
-    public function dry_run( int $product_id, array $mapping, array $options = [] ): array {
-        $product = wc_get_product( $product_id );
-        if ( ! $product instanceof WC_Product ) {
-            throw new RuntimeException( 'Produto inválido.' );
-        }
+    public function dry_run( int $product_id, array $mapping, array $options = [], ?string $corr_id = null ): array|WP_Error {
+        return $this->logger->scoped(
+            $this->build_context( $product_id, $corr_id, 'dry_run' ),
+            function () use ( $product_id, $mapping, $options, $corr_id ) {
+                $product = wc_get_product( $product_id );
+                if ( ! $product instanceof WC_Product ) {
+                    $this->logger->warning( 'dry_run.invalid_product', [ 'product_id' => $product_id ] );
 
-        $report = [
-            'product_id' => $product_id,
-            'attributes' => [],
-            'errors'     => [],
-        ];
-
-        foreach ( $mapping as $attribute_mapping ) {
-            $target_tax    = $this->sanitize_taxonomy( $attribute_mapping['target_tax'] ?? '' );
-            $local_label   = (string) ( $attribute_mapping['local_label'] ?? $attribute_mapping['local_attr'] ?? '' );
-            $create_attr   = ! empty( $attribute_mapping['create_attribute'] );
-            $term_actions  = [ 'create' => [], 'existing' => [] ];
-            $term_errors   = [];
-
-            if ( empty( $target_tax ) ) {
-                $term_errors[] = __( 'Taxonomia alvo não informada.', 'local2global' );
-            }
-
-            if ( taxonomy_exists( $target_tax ) ) {
-                $attribute_exists = true;
-            } else {
-                $attribute_exists = false;
-                if ( ! $create_attr ) {
-                    $term_errors[] = sprintf( __( 'Atributo global %s não existe e criação automática não foi selecionada.', 'local2global' ), $target_tax );
+                    return $this->error( 'l2g_invalid_product', __( 'Produto inválido.', 'local2global' ), 400, $corr_id, [ 'product_id' => $product_id ] );
                 }
-            }
 
-            foreach ( $attribute_mapping['terms'] ?? [] as $term_map ) {
-                $local_value = (string) ( $term_map['local_value'] ?? '' );
-                $slug        = sanitize_title( $term_map['term_slug'] ?? $term_map['term_name'] ?? $local_value );
-                $term        = $attribute_exists ? term_exists( $slug, $target_tax ) : null;
+                $report = [
+                    'product_id' => $product_id,
+                    'attributes' => [],
+                    'errors'     => [],
+                ];
 
-                if ( $term ) {
-                    $term_actions['existing'][] = $local_value;
-                } elseif ( ! empty( $term_map['create'] ) || ! empty( $options['auto_create_terms'] ) || ! $attribute_exists ) {
-                    $term_actions['create'][] = [ 'value' => $local_value, 'slug' => $slug ];
-                } else {
-                    $term_errors[] = sprintf( __( 'Termo %1$s não encontrado na taxonomia %2$s.', 'local2global' ), $local_value, $target_tax );
+                foreach ( $mapping as $attribute_mapping ) {
+                    $target_tax    = $this->sanitize_taxonomy( (string) ( $attribute_mapping['target_tax'] ?? '' ) );
+                    $local_label   = (string) ( $attribute_mapping['local_label'] ?? $attribute_mapping['local_attr'] ?? '' );
+                    $create_attr   = ! empty( $attribute_mapping['create_attribute'] );
+                    $term_actions  = [ 'create' => [], 'existing' => [] ];
+                    $term_errors   = [];
+
+                    if ( '' === $target_tax ) {
+                        $term_errors[] = __( 'Taxonomia alvo não informada.', 'local2global' );
+                    }
+
+                    if ( taxonomy_exists( $target_tax ) ) {
+                        $attribute_exists = true;
+                    } else {
+                        $attribute_exists = false;
+                        if ( ! $create_attr ) {
+                            $term_errors[] = sprintf( __( 'Atributo global %s não existe e criação automática não foi selecionada.', 'local2global' ), $target_tax );
+                        }
+                    }
+
+                    foreach ( $attribute_mapping['terms'] ?? [] as $term_map ) {
+                        $local_value = (string) ( $term_map['local_value'] ?? '' );
+                        $slug        = sanitize_title( $term_map['term_slug'] ?? $term_map['term_name'] ?? $local_value );
+                        $term        = $attribute_exists ? term_exists( $slug, $target_tax ) : null;
+
+                        if ( $term ) {
+                            $term_actions['existing'][] = $local_value;
+                        } elseif ( ! empty( $term_map['create'] ) || ! empty( $options['auto_create_terms'] ) || ! $attribute_exists ) {
+                            $term_actions['create'][] = [ 'value' => $local_value, 'slug' => $slug ];
+                        } else {
+                            $term_errors[] = sprintf( __( 'Termo %1$s não encontrado na taxonomia %2$s.', 'local2global' ), $local_value, $target_tax );
+                        }
+                    }
+
+                    $report['attributes'][] = [
+                        'local_label'      => $local_label,
+                        'target_tax'       => $target_tax,
+                        'attribute_exists' => $attribute_exists,
+                        'create_attribute' => $create_attr && ! $attribute_exists,
+                        'terms'            => $term_actions,
+                        'errors'           => $term_errors,
+                    ];
+
+                    $report['errors'] = array_merge( $report['errors'], $term_errors );
                 }
+
+                $this->logger->info( 'dry_run.completed', [ 'errors' => count( $report['errors'] ) ] );
+
+                return $report;
             }
-
-            $report['attributes'][] = [
-                'local_label'      => $local_label,
-                'target_tax'       => $target_tax,
-                'attribute_exists' => $attribute_exists,
-                'create_attribute' => $create_attr && ! $attribute_exists,
-                'terms'            => $term_actions,
-                'errors'           => $term_errors,
-            ];
-
-            $report['errors'] = array_merge( $report['errors'], $term_errors );
-        }
-
-        return $report;
+        );
     }
 
-    public function apply( int $product_id, array $mapping, array $options = [] ): array {
-        $product = wc_get_product( $product_id );
-        if ( ! $product instanceof WC_Product ) {
-            throw new RuntimeException( 'Produto inválido.' );
-        }
+    public function apply( int $product_id, array $mapping, array $options = [], ?string $corr_id = null ): array|WP_Error {
+        return $this->logger->scoped(
+            $this->build_context( $product_id, $corr_id, 'apply' ),
+            function () use ( $product_id, $mapping, $options, $corr_id ) {
+                $product = wc_get_product( $product_id );
+                if ( ! $product instanceof WC_Product ) {
+                    $this->logger->warning( 'apply.invalid_product', [ 'product_id' => $product_id ] );
 
-        $attributes_before = $product->get_attributes();
-
-        if ( ! empty( $options['create_backup'] ) ) {
-            $this->rollback->create_backup( $product, $attributes_before );
-        }
-
-        $results = [
-            'created_terms' => [],
-            'existing_terms'=> [],
-            'updated_attrs' => [],
-            'variations'    => [],
-        ];
-
-        foreach ( $mapping as $attribute_mapping ) {
-            $target_tax    = $this->sanitize_taxonomy( $attribute_mapping['target_tax'] ?? '' );
-            $local_name    = (string) ( $attribute_mapping['local_attr'] ?? '' );
-            $local_label   = (string) ( $attribute_mapping['local_label'] ?? $local_name );
-            $create_attr   = ! empty( $attribute_mapping['create_attribute'] );
-            $terms_config  = $attribute_mapping['terms'] ?? [];
-
-            if ( empty( $target_tax ) || empty( $local_name ) ) {
-                throw new RuntimeException( 'Mapeamento incompleto.' );
-            }
-
-            $attribute_info = $this->terms->ensure_global_attribute( $target_tax, $attribute_mapping['target_label'] ?? $local_label, $create_attr, $attribute_mapping['attribute_args'] ?? [] );
-            $term_results   = $this->terms->ensure_terms( $attribute_info['taxonomy'], $terms_config, ! empty( $options['auto_create_terms'] ) );
-
-            $term_ids   = array_values( array_unique( array_map( static fn( array $item ) => (int) $item['term_id'], $term_results ) ) );
-            $slug_map   = [];
-            $created    = [];
-            $existing   = [];
-
-            foreach ( $term_results as $term_result ) {
-                $normalized            = $this->normalize_local_value( $term_result['local_value'] );
-                $slug_map[ $normalized ] = $term_result['slug'];
-                if ( $term_result['created'] ) {
-                    $created[] = $term_result['slug'];
-                } else {
-                    $existing[] = $term_result['slug'];
+                    return $this->error( 'l2g_invalid_product', __( 'Produto inválido.', 'local2global' ), 400, $corr_id, [ 'product_id' => $product_id ] );
                 }
+
+                $options           = $this->normalize_options( $options );
+                $attributes_before = $product->get_attributes();
+
+                $this->logger->info( 'apply.start', [ 'attributes' => count( $mapping ) ] );
+
+                if ( ! empty( $options['create_backup'] ) ) {
+                    try {
+                        $this->rollback->create_backup( $product, $attributes_before );
+                    } catch ( Throwable $throwable ) {
+                        $this->logger->error( 'apply.backup_failed', [ 'exception' => $throwable ] );
+
+                        return $this->error( 'l2g_backup_failed', __( 'Não foi possível criar o backup do produto antes da aplicação.', 'local2global' ), 500, $corr_id );
+                    }
+                }
+
+                $results = [
+                    'created_terms' => [],
+                    'existing_terms'=> [],
+                    'updated_attrs' => [],
+                    'variations'    => [],
+                ];
+
+                $term_assignments  = [];
+                $variation_jobs    = [];
+                $template_jobs     = [];
+
+                foreach ( $mapping as $index => $attribute_mapping ) {
+                    $local_name   = trim( (string) ( $attribute_mapping['local_attr'] ?? '' ) );
+                    $local_label  = (string) ( $attribute_mapping['local_label'] ?? $local_name );
+                    $target_tax   = $this->sanitize_taxonomy( (string) ( $attribute_mapping['target_tax'] ?? '' ) );
+                    $create_attr  = ! empty( $attribute_mapping['create_attribute'] );
+                    $terms_config = is_array( $attribute_mapping['terms'] ?? null ) ? (array) $attribute_mapping['terms'] : [];
+
+                    $error = $this->logger->scoped(
+                        array_filter( [
+                            'local_attr' => $local_name ?: null,
+                            'target_tax' => $target_tax ?: null,
+                        ] ),
+                        function () use (
+                            $index,
+                            $local_name,
+                            $local_label,
+                            $target_tax,
+                            $create_attr,
+                            $terms_config,
+                            $attribute_mapping,
+                            $options,
+                            $product,
+                            &$results,
+                            &$term_assignments,
+                            &$variation_jobs,
+                            &$template_jobs,
+                            $corr_id
+                        ) {
+                            if ( '' === $local_name ) {
+                                return $this->error(
+                                    'l2g_validation',
+                                    sprintf( __( 'Atributo local na posição %d não informado.', 'local2global' ), $index + 1 ),
+                                    400,
+                                    $corr_id,
+                                    [ 'attribute_index' => $index ]
+                                );
+                            }
+
+                            if ( '' === $target_tax ) {
+                                return $this->error(
+                                    'l2g_validation',
+                                    sprintf( __( 'O atributo global para %s não foi definido.', 'local2global' ), $local_name ),
+                                    400,
+                                    $corr_id,
+                                    [ 'attribute' => $local_name ]
+                                );
+                            }
+
+                            if ( ! taxonomy_exists( $target_tax ) && ! $create_attr ) {
+                                return $this->error(
+                                    'l2g_attribute_missing',
+                                    sprintf( __( 'O atributo global %s não existe e criação automática está desativada.', 'local2global' ), $target_tax ),
+                                    400,
+                                    $corr_id,
+                                    [ 'target_tax' => $target_tax ]
+                                );
+                            }
+
+                            try {
+                                $attribute_info = $this->terms->ensure_global_attribute(
+                                    $target_tax,
+                                    $attribute_mapping['target_label'] ?? $local_label,
+                                    $create_attr,
+                                    $attribute_mapping['attribute_args'] ?? []
+                                );
+                            } catch ( RuntimeException $exception ) {
+                                $this->logger->warning( 'apply.attribute_failure', [ 'exception' => $exception ] );
+
+                                return $this->error( 'l2g_attribute_missing', $exception->getMessage(), 400, $corr_id, [ 'target_tax' => $target_tax ] );
+                            }
+
+                            try {
+                                $term_results = $this->terms->ensure_terms( $attribute_info['taxonomy'], $terms_config, ! empty( $options['auto_create_terms'] ) );
+                            } catch ( RuntimeException $exception ) {
+                                $this->logger->warning( 'apply.term_failure', [ 'exception' => $exception ] );
+
+                                $status = $this->is_conflict_message( $exception->getMessage() ) ? 409 : 400;
+
+                                return $this->error( 'l2g_terms_missing', $exception->getMessage(), $status, $corr_id, [ 'target_tax' => $target_tax ] );
+                            }
+
+                            $term_ids = array_values( array_unique( array_map( static fn( array $item ) => (int) $item['term_id'], $term_results ) ) );
+                            if ( empty( $term_ids ) ) {
+                                return $this->error( 'l2g_validation', __( 'Nenhum termo válido informado para o mapeamento.', 'local2global' ), 400, $corr_id, [ 'target_tax' => $target_tax ] );
+                            }
+
+                            $slug_map = [];
+                            $created  = [];
+                            $existing = [];
+
+                            foreach ( $term_results as $term_result ) {
+                                $normalized            = $this->normalize_local_value( $term_result['local_value'] );
+                                $slug_map[ $normalized ] = $term_result['slug'];
+                                if ( $term_result['created'] ) {
+                                    $created[] = $term_result['slug'];
+                                } else {
+                                    $existing[] = $term_result['slug'];
+                                }
+                            }
+
+                            $updated = $this->replace_attribute( $product, $local_name, $attribute_info['taxonomy'], $attribute_info['attribute_id'], $term_ids );
+                            if ( ! $updated ) {
+                                $this->logger->warning( 'apply.attribute_not_found', [ 'local_attr' => $local_name ] );
+
+                                return $this->error(
+                                    'l2g_attribute_missing',
+                                    sprintf( __( 'Não foi possível localizar o atributo local %s no produto.', 'local2global' ), $local_name ),
+                                    400,
+                                    $corr_id,
+                                    [ 'attribute' => $local_name ]
+                                );
+                            }
+
+                            $term_assignments[] = [
+                                'taxonomy' => $attribute_info['taxonomy'],
+                                'terms'    => array_map( 'intval', $term_ids ),
+                            ];
+
+                            $results['created_terms'][ $attribute_info['taxonomy'] ]  = $created;
+                            $results['existing_terms'][ $attribute_info['taxonomy'] ] = $existing;
+                            $results['updated_attrs'][]                               = $attribute_info['taxonomy'];
+
+                            if ( ! empty( $options['update_variations'] ) ) {
+                                $variation_jobs[] = [
+                                    'taxonomy'   => $attribute_info['taxonomy'],
+                                    'local_name' => $local_name,
+                                    'slug_map'   => $slug_map,
+                                ];
+                            }
+
+                            if ( ! empty( $attribute_mapping['save_template'] ) ) {
+                                $template_jobs[] = [
+                                    'label' => $local_label,
+                                    'data'  => [
+                                        'target_tax' => $attribute_info['taxonomy'],
+                                        'terms'      => array_combine(
+                                            array_map( static fn( array $item ) => $item['local_value'], $term_results ),
+                                            array_map( static fn( array $item ) => $item['slug'], $term_results )
+                                        ),
+                                    ],
+                                ];
+                            }
+
+                            return null;
+                        }
+                    );
+
+                    if ( $error instanceof WP_Error ) {
+                        return $error;
+                    }
+                }
+
+                try {
+                    foreach ( $term_assignments as $assignment ) {
+                        wp_set_object_terms( $product_id, $assignment['terms'], $assignment['taxonomy'], false );
+                    }
+
+                    foreach ( $template_jobs as $template ) {
+                        $this->templates->save_template( $template['label'], $template['data'] );
+                    }
+
+                    foreach ( $variation_jobs as $job ) {
+                        $variation_stats = $this->variations->update_variations( $product, $job['taxonomy'], $job['local_name'], $job['slug_map'], $corr_id );
+                        $results['variations'][ $job['taxonomy'] ] = $variation_stats;
+                    }
+
+                    $product->save();
+
+                    if ( $product->is_type( 'variable' ) ) {
+                        WC_Product_Variable::sync( $product, true );
+                    }
+
+                    wc_delete_product_transients( $product_id );
+                } catch ( Throwable $exception ) {
+                    $this->logger->error( 'apply.finalization_failed', [ 'exception' => $exception ] );
+
+                    return $this->error( 'l2g_apply_failed', __( 'Falha ao concluir a aplicação do mapeamento.', 'local2global' ), 500, $corr_id, [ 'details' => $exception->getMessage() ] );
+                }
+
+                $this->logger->info( 'apply.completed', [ 'updated' => count( $results['updated_attrs'] ) ] );
+
+                return $results;
             }
-
-            $updated = $this->replace_attribute( $product, $local_name, $attribute_info['taxonomy'], $attribute_info['attribute_id'], $term_ids );
-            if ( ! $updated ) {
-                throw new RuntimeException( sprintf( 'Não foi possível localizar o atributo local %s no produto.', $local_name ) );
-            }
-
-            wp_set_object_terms( $product_id, array_map( 'intval', $term_ids ), $attribute_info['taxonomy'], false );
-
-            if ( ! empty( $options['update_variations'] ) ) {
-                $variation_stats = $this->variations->update_variations( $product, $attribute_info['taxonomy'], $local_name, $slug_map );
-                $results['variations'][ $attribute_info['taxonomy'] ] = $variation_stats;
-            }
-
-            if ( ! empty( $attribute_mapping['save_template'] ) ) {
-                $this->templates->save_template( $local_label, [
-                    'target_tax' => $attribute_info['taxonomy'],
-                    'terms'      => array_combine(
-                        array_map( static fn( array $item ) => $item['local_value'], $term_results ),
-                        array_map( static fn( array $item ) => $item['slug'], $term_results )
-                    ),
-                ] );
-            }
-
-            $results['created_terms'][ $attribute_info['taxonomy'] ]  = $created;
-            $results['existing_terms'][ $attribute_info['taxonomy'] ] = $existing;
-            $results['updated_attrs'][]                               = $attribute_info['taxonomy'];
-        }
-
-        $product->save();
-
-        wc_delete_product_transients( $product_id );
-
-        $this->logger->info( 'Mapeamento aplicado.', [ 'product_id' => $product_id, 'result' => $results ] );
-
-        return $results;
+        );
     }
 
     private function replace_attribute( WC_Product $product, string $local_name, string $taxonomy, int $attribute_id, array $term_ids ): bool {
@@ -210,6 +361,43 @@ class Mapping_Service {
 
     private function normalize_local_value( string $value ): string {
         return strtolower( trim( wc_clean( $value ) ) );
+    }
+
+    private function normalize_options( array $options ): array {
+        return [
+            'auto_create_terms' => ! empty( $options['auto_create_terms'] ),
+            'update_variations' => ! empty( $options['update_variations'] ),
+            'create_backup'     => ! empty( $options['create_backup'] ),
+        ];
+    }
+
+    private function build_context( int $product_id, ?string $corr_id, string $operation ): array {
+        $context = [
+            'product_id' => $product_id,
+            'operation'  => $operation,
+        ];
+
+        if ( $corr_id ) {
+            $context['corr_id'] = $corr_id;
+        }
+
+        return $context;
+    }
+
+    private function error( string $code, string $message, int $status, ?string $corr_id, array $details = [] ): WP_Error {
+        $data = array_merge( $details, [ 'status' => $status ] );
+
+        if ( $corr_id ) {
+            $data['corr_id'] = $corr_id;
+        }
+
+        return new WP_Error( $code, $message, $data );
+    }
+
+    private function is_conflict_message( string $message ): bool {
+        $message = strtolower( $message );
+
+        return str_contains( $message, 'já existe' ) || str_contains( $message, 'already exists' );
     }
 
     /**

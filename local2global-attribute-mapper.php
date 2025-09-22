@@ -24,6 +24,10 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 const VERSION = '0.1.1';
 
+if ( ! defined( 'L2G_DEBUG' ) ) {
+    define( 'L2G_DEBUG', defined( 'WP_DEBUG' ) && WP_DEBUG );
+}
+
 /**
  * Autoloader simplificado baseado em PSR-4.
  *
