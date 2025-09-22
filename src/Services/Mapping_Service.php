@@ -564,9 +564,24 @@ class Mapping_Service {
                     $stats = $this->variations->update_variations( $product, $tax, $local_guess, $slug_map, $corr_id );
                     $results[ $tax ] = $stats;
                 }
-
+                // Agrega razões
+                $aggregate = [ 'updated' => 0, 'skipped' => 0, 'reasons' => [ 'missing_source_meta' => 0, 'no_slug_match' => 0, 'already_ok' => 0 ] ];
+                foreach ( $results as $tax => $stats ) {
+                    $aggregate['updated'] += (int) ( $stats['updated'] ?? 0 );
+                    $aggregate['skipped'] += (int) ( $stats['skipped'] ?? 0 );
+                    if ( isset( $stats['reasons'] ) && is_array( $stats['reasons'] ) ) {
+                        foreach ( $stats['reasons'] as $reason => $count ) {
+                            if ( isset( $aggregate['reasons'][ $reason ] ) ) {
+                                $aggregate['reasons'][ $reason ] += (int) $count;
+                            } else {
+                                $aggregate['reasons'][ $reason ] = (int) $count; // caso futuro
+                            }
+                        }
+                    }
+                }
+                $this->logger->info( 'variation.resync.summary', [ 'aggregate' => $aggregate, 'taxonomies' => array_keys( $results ) ] );
                 $this->logger->info( 'variation.resync.completed', [ 'taxonomies' => $results ] );
-                return [ 'product_id' => $product_id, 'taxonomies' => $results ];
+                return [ 'product_id' => $product_id, 'taxonomies' => $results, 'aggregate' => $aggregate ];
             }
         );
     }
