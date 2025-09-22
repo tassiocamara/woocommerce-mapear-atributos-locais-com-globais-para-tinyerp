@@ -145,6 +145,11 @@ class Rest_Controller {
                 }
 
                 $options = $options ? (array) $options : [];
+                // Normaliza flag hydrate_variations se enviada como string '1'/'true'
+                if ( isset( $options['hydrate_variations'] ) ) {
+                    $val = $options['hydrate_variations'];
+                    $options['hydrate_variations'] = ( $val === true || $val === 1 || $val === '1' || $val === 'true' );
+                }
 
                 $this->logger->info(
                     'map.request_received',
@@ -256,7 +261,11 @@ class Rest_Controller {
         }
 
         $this->logger->info( 'variation.resync.request', [ 'corr_id' => $corr_id, 'product_id' => $product_id, 'tax_filter' => $taxonomies ] );
-        $result = $this->mapping->update_variations_only( $product_id, $taxonomies ? array_map( 'sanitize_key', $taxonomies ) : null, $corr_id );
+        $hydrate_raw = $request->get_param( 'hydrate_variations' );
+        $aggressive_raw = $request->get_param( 'aggressive_hydrate_variations' );
+        $hydrate = ( $hydrate_raw === true || $hydrate_raw === 1 || $hydrate_raw === '1' || $hydrate_raw === 'true' );
+        $aggressive = ( $aggressive_raw === true || $aggressive_raw === 1 || $aggressive_raw === '1' || $aggressive_raw === 'true' );
+    $result = $this->mapping->update_variations_only( $product_id, $taxonomies ? array_map( 'sanitize_key', $taxonomies ) : null, $corr_id, $hydrate, $aggressive );
         if ( is_wp_error( $result ) ) {
             $data = $result->get_error_data();
             if ( is_array( $data ) && empty( $data['corr_id'] ) ) {

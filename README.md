@@ -93,11 +93,11 @@ Principais marcadores de log:
 | `term.created` | Termo criado na taxonomia alvo |
 | `term.reuse` | Termo existente reutilizado (source: lookup/cache_or_lookup) |
 | `variation.slug_map_missing` | Valor de variação não mapeado no slug_map |
-| `variation.update.summary` | Resultado por atributo (updated, skipped, reasons) |
+| `variation.update.summary` | Resultado por atributo (updated, skipped, total_variations, reasons, hydrate_mode) |
 | `apply.term_assignment` | Atribuição de termos ao produto principal |
-| `apply.completed` | Resumo final (terms, variações, variation_reasons) |
+| `apply.completed` | Resumo final (terms, variações) |
 | `variation.resync.start` | Início de reprocessamento isolado de variações |
-| `variation.resync.summary` | Agregado de todas as taxonomias (updated, skipped, reasons) |
+| `variation.resync.summary` | Agregado de todas as taxonomias (updated, skipped, total_variations, reasons) |
 | `variation.resync.completed` | Detalhes por taxonomia no resync |
 | `permission.denied` | Falha de permissão em endpoint REST |
 
@@ -181,11 +181,52 @@ Todos os valores locais e de variações passam por normalização unificada (cl
 
 ### Interpretação de `variation.update.summary` e `variation.resync.summary`
 
-Campos de razões:
-- `missing_source_meta`: A variação não possui mais a meta antiga (`attribute_<local>`) para migrar.
-- `no_slug_match`: Valor local normalizado não encontrou slug correspondente.
-- `already_ok`: Já possuía meta `attribute_pa_*` e não havia meta local para migrar.
+Campos principais:
+- `updated`: Quantidade de variações ajustadas.
+- `skipped`: Variações ignoradas (ver reasons).
+- `total_variations`: Total de variações examinadas para aquela taxonomia.
+- `hydrate_mode` (boolean em variation.update.summary): Indica se o modo de hidratação estava ativo.
 
-Use `variation.resync.summary` para verificar rapidamente eficácia de uma rodada de reprocessamento após corrigir termos ou valores.
+Razões (`reasons`):
+- `missing_source_meta`: Não havia meta de origem; se `hydrate_mode=true`, plugin pode tentar inferir a partir de slug já aplicado ou título da variação.
+- `no_slug_match`: Valor normalizado não correspondeu a nenhum slug mapeado.
+- `already_ok`: Já continha meta target e nenhuma meta local.
+- `hydrated`: (Somente quando `hydrate_variations` ativo) Variação atualizada via inferência sem meta local original.
+
+`variation.resync.summary` agrega contagens somando `updated`, `skipped`, `total_variations` e razões de todas as taxonomias processadas.
+
+### Modo de Hidratação de Variações (`hydrate_variations`)
+
+Quando ativado (via `options.hydrate_variations` no endpoint `/map`, parâmetro `hydrate_variations` em `/variations/update`, ou flags CLI `--hydrate-variations=1` / `--hydrate=1`), o serviço tenta recuperar variações que perderam a meta local original:
+1. Usa valor já existente em `attribute_pa_*` (se presente) para mapear novamente.
+2. Caso vago, tenta extrair possível valor do título (`post_title`) da variação.
+3. Normaliza e compara com o `slug_map` ativo; em caso de sucesso aplica a meta target e incrementa `hydrated`.
+
+Isso reduz `missing_source_meta` após rodadas de limpeza onde a meta local foi removida antes da migração completa.
+
+### Modo de Inferência Agressiva (`aggressive_hydrate_variations`)
+
+Quando habilitado junto ao `hydrate_variations`, o plugin tenta inferir o termo correto mesmo quando há múltiplos termos possíveis (multi-termos) analisando:
+
+1. Título da variação (`post_title`): correspondência de palavra inteira (normalizada) com nomes originais dos termos.
+2. SKU (`_sku`): presença de fragmentos normalizados que batam com termos.
+3. Padrões numéricos simples (ex: `180/90`, `42`, `44`) presentes no título/SKU que correspondam a termos numéricos.
+
+Regras de decisão:
+- Se exatamente 1 candidato é encontrado: atribui e contabiliza em `inferred`.
+- Se mais de 1 candidato é encontrado: não aplica (para evitar erro) e contabiliza em `ambiguous_inference`.
+- Se nenhum candidato: permanece como `missing_source_meta`.
+
+Novas razões adicionadas em `reasons`:
+- `inferred`: termo aplicado via inferência agressiva multi-termos.
+- `ambiguous_inference`: múltiplos candidatos conflitantes; nenhuma atribuição feita.
+
+Como habilitar:
+- Endpoint `/map`: incluir em `options` `{ "aggressive_hydrate_variations": true }` (requer também `update_variations` e preferencialmente `hydrate_variations`).
+- Endpoint `/variations/update`: enviar `aggressive_hydrate_variations=1` no corpo JSON.
+- WP-CLI `map`: `--aggressive-hydrate-variations=1`.
+- WP-CLI `variations-update`: `--aggressive=1`.
+
+Observação: a inferência agressiva só roda quando há mais de um termo possível no `slug_map`; para caso de termo único a lógica básica já cobre.
 
 

@@ -10,6 +10,11 @@ use WC_Product;
 use WC_Product_Variable;
 use WC_Product_Variation;
 
+// Stub condicional para análise estática fora do ambiente WordPress
+if ( ! function_exists( '\\get_post' ) ) {
+    function get_post( $post_id ) { return null; }
+}
+
 class Variation_Service {
     public function __construct( private Logger $logger ) {}
 
@@ -17,17 +22,18 @@ class Variation_Service {
      * @param array<string, string> $slug_map slug normalizado => slug final
      * @return array{updated:int, skipped:int, reasons:array<string,int>}
      */
-    public function update_variations( WC_Product $product, string $taxonomy, string $local_name, array $slug_map, ?string $corr_id = null ): array {
+    public function update_variations( WC_Product $product, string $taxonomy, string $local_name, array $slug_map, ?string $corr_id = null, bool $hydrate = false, bool $aggressive = false ): array {
         if ( ! $product->is_type( 'variable' ) ) {
             return [ 'updated' => 0, 'skipped' => 0, 'reasons' => [] ];
         }
 
-        $updated     = 0;
-        $skipped     = 0;
-        $reasons     = [ 'missing_source_meta' => 0, 'no_slug_match' => 0, 'already_ok' => 0 ];
+    $updated     = 0;
+    $skipped     = 0;
+    $reasons     = [ 'missing_source_meta' => 0, 'no_slug_match' => 0, 'already_ok' => 0, 'hydrated' => 0, 'inferred' => 0, 'ambiguous_inference' => 0 ];
         $local_key   = 'attribute_' . sanitize_title( $local_name );
         $target_key  = 'attribute_' . $taxonomy;
-        $variations  = $product->get_children();
+    $variations  = $product->get_children();
+    $total       = count( $variations );
 
         foreach ( $variations as $variation_id ) {
             $variation = wc_get_product( $variation_id );
@@ -46,6 +52,48 @@ class Variation_Service {
             }
 
             if ( '' === $current_value ) {
+                if ( $hydrate ) {
+                    $maybe = $current_target;
+                    if ( '' === $maybe ) {
+                        $maybe_attr = (string) $variation->get_meta( $local_key );
+                        if ( '' !== $maybe_attr ) {
+                            $maybe = $maybe_attr;
+                        } else {
+                            $post = get_post( $variation->get_id() );
+                            if ( $post ) { $maybe = $post->post_title; }
+                        }
+                    }
+                    $norm_maybe = Value_Normalizer::normalize( $maybe );
+                    if ( isset( $slug_map[ $norm_maybe ] ) ) {
+                        $variation->update_meta_data( $target_key, $slug_map[ $norm_maybe ] );
+                        $variation->save();
+                        $updated++;
+                        $reasons['hydrated']++;
+                        continue;
+                    }
+                    if ( 1 === count( $slug_map ) ) { // single-term fallback
+                        $only = reset( $slug_map );
+                        $variation->update_meta_data( $target_key, $only );
+                        $variation->save();
+                        $updated++;
+                        $reasons['hydrated']++;
+                        continue;
+                    }
+                    // Aggressive multi-term inferência
+                    if ( $aggressive && count( $slug_map ) > 1 ) {
+                        $candidates = $this->infer_candidates( $variation, $slug_map, $local_key, $target_key );
+                        if ( 1 === count( $candidates ) ) {
+                            $slug = reset( $candidates );
+                            $variation->update_meta_data( $target_key, $slug );
+                            $variation->save();
+                            $updated++;
+                            $reasons['inferred']++;
+                            continue;
+                        } elseif ( count( $candidates ) > 1 ) {
+                            $reasons['ambiguous_inference']++;
+                        }
+                    }
+                }
                 $skipped++;
                 $reasons['missing_source_meta']++;
                 continue;
@@ -53,14 +101,38 @@ class Variation_Service {
 
             $normalized = Value_Normalizer::normalize( $current_value );
             if ( ! isset( $slug_map[ $normalized ] ) ) {
+                // Heurística: se há somente um slug possível, assume aquele.
+                if ( 1 === count( $slug_map ) ) {
+                    $only = reset( $slug_map );
+                    $variation->update_meta_data( $target_key, $only );
+                    $variation->delete_meta_data( $local_key );
+                    $variation->save();
+                    $updated++;
+                    $reasons['hydrated']++; // Reaproveita razão hydrated para indicar inferência.
+                    continue;
+                }
+                if ( $hydrate && $aggressive && count( $slug_map ) > 1 ) {
+                    $candidates = $this->infer_candidates( $variation, $slug_map, $local_key, $target_key );
+                    if ( 1 === count( $candidates ) ) {
+                        $slug = reset( $candidates );
+                        $variation->update_meta_data( $target_key, $slug );
+                        $variation->delete_meta_data( $local_key );
+                        $variation->save();
+                        $updated++;
+                        $reasons['inferred']++;
+                        continue;
+                    } elseif ( count( $candidates ) > 1 ) {
+                        $reasons['ambiguous_inference']++;
+                    }
+                }
                 $this->logger->warning( 'variation.slug_map_missing', [ 'variation_id' => $variation_id, 'raw_value' => $current_value, 'normalized' => $normalized ] );
                 $skipped++;
                 $reasons['no_slug_match']++;
                 continue;
             }
 
-            // Se já está certo e sem local, classifica como already_ok.
-            if ( '' === $current_target && $slug_map[ $normalized ] === $current_target ) {
+            // Se já possui meta target igual ao slug esperado e meta local será removida.
+            if ( '' !== $current_target && $slug_map[ $normalized ] === $current_target ) {
                 $skipped++;
                 $reasons['already_ok']++;
                 continue;
@@ -76,13 +148,18 @@ class Variation_Service {
             WC_Product_Variable::sync( $product, true );
         }
 
+        $updated_pct = $total > 0 ? round( ( $updated / $total ) * 100, 2 ) : 0.0;
         $context = [
             'product_id' => $product->get_id(),
             'taxonomy'   => $taxonomy,
             'local_attr' => $local_name,
             'updated'    => $updated,
             'skipped'    => $skipped,
+            'total_variations' => $total,
+            'updated_pct' => $updated_pct,
             'reasons'    => $reasons,
+            'hydrate_mode' => $hydrate,
+            'aggressive_mode' => $aggressive,
         ];
 
         if ( $corr_id ) {
@@ -91,8 +168,80 @@ class Variation_Service {
 
         $this->logger->info( 'variation.update.summary', $context );
 
-        return [ 'updated' => $updated, 'skipped' => $skipped, 'reasons' => $reasons ];
+        return [ 'updated' => $updated, 'skipped' => $skipped, 'total_variations' => $total, 'updated_pct' => $updated_pct, 'reasons' => $reasons ];
     }
 
     private function normalize_local_value( string $value ): string { return Value_Normalizer::normalize( $value ); }
+
+    /**
+     * Inferir candidatos analisando título, slug target atual e SKU.
+     * Retorna lista de slugs possíveis (valores do slug_map).
+     * Estratégia:
+     *  - Se post_title contém exatamente um termo (nome) normalizado => match único
+     *  - Se SKU contém slug
+     *  - Se padrões numéricos (ex: "180/90") correspondem a termos numéricos.
+     *  - Remove duplicados preservando ordem de descoberta.
+     *  - Só considera candidatos cujo slug esteja em slug_map.
+     *
+     * @param array<string,string> $slug_map
+     * @return string[] slugs inferidos
+     */
+    private function infer_candidates( WC_Product_Variation $variation, array $slug_map, string $local_key, string $target_key ): array {
+        $post  = get_post( $variation->get_id() );
+        $title = $post ? (string) $post->post_title : '';
+        $sku   = (string) $variation->get_meta( '_sku' );
+        $candidates = [];
+
+        if ( function_exists( 'apply_filters' ) ) {
+            $max_title_length = (int) apply_filters( 'local2global_aggressive_max_title_length', 160 );
+            $max_candidates   = (int) apply_filters( 'local2global_aggressive_max_candidates', 3 );
+        } else {
+            $max_title_length = 160;
+            $max_candidates   = 3;
+        }
+
+        $title_for_matching = mb_strlen( $title ) > $max_title_length ? '' : $title;
+
+        $normalized_to_slug = $slug_map;
+
+        $lower_title = mb_strtolower( $title_for_matching );
+        if ( '' !== $lower_title ) {
+            foreach ( $normalized_to_slug as $norm => $slug ) {
+                if ( preg_match( '/\b' . preg_quote( $norm, '/' ) . '\b/u', $lower_title ) ) {
+                    $candidates[] = $slug;
+                    if ( count( $candidates ) >= $max_candidates ) { break; }
+                }
+            }
+        }
+
+        if ( count( $candidates ) < $max_candidates ) {
+            $lower_sku = mb_strtolower( $sku );
+            if ( '' !== $lower_sku ) {
+                foreach ( $normalized_to_slug as $norm => $slug ) {
+                    if ( str_contains( $lower_sku, $norm ) ) {
+                        $candidates[] = $slug;
+                        if ( count( $candidates ) >= $max_candidates ) { break; }
+                    }
+                }
+            }
+        }
+
+        if ( count( $candidates ) < $max_candidates ) {
+            if ( preg_match_all( '/\b\d{1,4}(?:\/\d{1,4})?\b/u', $title . ' ' . $sku, $matches ) ) {
+                foreach ( $matches[0] as $raw ) {
+                    $norm = Value_Normalizer::normalize( $raw );
+                    if ( isset( $normalized_to_slug[ $norm ] ) ) {
+                        $candidates[] = $normalized_to_slug[ $norm ];
+                        if ( count( $candidates ) >= $max_candidates ) { break; }
+                    }
+                }
+            }
+        }
+
+        $unique = [];
+        foreach ( $candidates as $slug ) {
+            if ( ! in_array( $slug, $unique, true ) ) { $unique[] = $slug; }
+        }
+        return $unique;
+    }
 }

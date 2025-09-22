@@ -38,6 +38,12 @@ class CLI_Command extends WP_CLI_Command {
      *
      * [--dry-run=<0|1>]
      * : Executa em modo de pré-visualização.
+    *
+    * [--hydrate-variations=<0|1>]
+    * : Tenta hidratar variações sem meta local usando heurísticas básicas.
+    *
+    * [--aggressive-hydrate-variations=<0|1>]
+    * : Ativa inferência agressiva multi-termos (título, SKU, padrões numéricos).
      */
     public function map( array $args, array $assoc_args ): void {
         $product_option = $assoc_args['product'] ?? null;
@@ -102,9 +108,11 @@ class CLI_Command extends WP_CLI_Command {
         }
 
         $options = [
-            'auto_create_terms' => ! empty( $assoc_args['create-missing'] ),
-            'update_variations' => ! empty( $assoc_args['apply-variations'] ),
-            'create_backup'     => empty( $assoc_args['dry-run'] ),
+            'auto_create_terms'              => ! empty( $assoc_args['create-missing'] ),
+            'update_variations'              => ! empty( $assoc_args['apply-variations'] ),
+            'create_backup'                  => empty( $assoc_args['dry-run'] ),
+            'hydrate_variations'             => ! empty( $assoc_args['hydrate-variations'] ),
+            'aggressive_hydrate_variations'  => ! empty( $assoc_args['aggressive-hydrate-variations'] ),
         ];
 
         foreach ( $products as $product_id ) {
@@ -277,6 +285,12 @@ class CLI_Command extends WP_CLI_Command {
      *
      * [--tax=<pa_tax>]
      * : Limitar a uma ou mais taxonomias (pode repetir).
+     *
+    * [--hydrate=<0|1>]
+    * : Ativa modo de hidratação básica de variações sem meta local.
+    *
+    * [--aggressive=<0|1>]
+    * : Ativa inferência agressiva multi-termos.
      */
     public function variations_update( array $args, array $assoc_args ): void {
         $product_id = (int) ( $assoc_args['product'] ?? 0 );
@@ -285,7 +299,9 @@ class CLI_Command extends WP_CLI_Command {
         }
         $tax_filters = (array) ( $assoc_args['tax'] ?? [] );
         $corr_id = uniqid( 'l2g_cli_var_', true );
-        $result  = $this->mapping->update_variations_only( $product_id, $tax_filters ?: null, $corr_id );
+    $hydrate    = ! empty( $assoc_args['hydrate'] );
+    $aggressive = ! empty( $assoc_args['aggressive'] );
+    $result  = $this->mapping->update_variations_only( $product_id, $tax_filters ?: null, $corr_id, $hydrate, $aggressive );
         if ( is_wp_error( $result ) ) {
             \WP_CLI::warning( sprintf( 'Falha (%s): %s', $corr_id, $result->get_error_message() ) );
             return;

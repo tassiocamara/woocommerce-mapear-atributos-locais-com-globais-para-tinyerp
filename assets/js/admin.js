@@ -370,6 +370,8 @@
             { key: 'auto_create_terms', label: settings.i18n.createTerm },
             { key: 'create_backup', label: settings.i18n.backup },
             { key: 'save_template', label: __('Aplicar como template para outros produtos', 'local2global') },
+            { key: 'hydrate_variations', label: __('Hidratar variações (recuperar valores ausentes)', 'local2global') },
+            { key: 'aggressive_hydrate_variations', label: __('Inferência agressiva multi-termos', 'local2global') },
         ];
 
         options.forEach((option) => {
@@ -426,6 +428,49 @@
         logContainer.className = 'local2global-log';
         logContainer.textContent = state.log.join('\n');
         container.appendChild(logContainer);
+
+        // Se o último log contém JSON de resultado, tentar parse para extrair resumo de variações.
+        const lastJson = (() => {
+            for (let i = state.log.length - 1; i >= 0; i--) {
+                const line = state.log[i];
+                if (line && line.startsWith('{') && line.endsWith('}')) {
+                    try { return JSON.parse(line); } catch (e) { /* ignore */ }
+                }
+            }
+            return null;
+        })();
+
+        if (lastJson && lastJson.variations) {
+            const table = document.createElement('table');
+            table.className = 'local2global-variation-summary';
+            table.innerHTML = '<thead><tr>' +
+                '<th>' + __('Taxonomia', 'local2global') + '</th>' +
+                '<th>' + __('Atualizadas', 'local2global') + '</th>' +
+                '<th>' + __('Ignoradas', 'local2global') + '</th>' +
+                '<th>' + __('Total', 'local2global') + '</th>' +
+                '<th>%</th>' +
+                '<th>' + __('Razões', 'local2global') + '</th>' +
+                '</tr></thead>';
+            const tbody = document.createElement('tbody');
+            Object.keys(lastJson.variations).forEach((tax) => {
+                const stats = lastJson.variations[tax] || {};
+                const tr = document.createElement('tr');
+                const pct = typeof stats.updated_pct === 'number' ? stats.updated_pct : (stats.total_variations ? (stats.updated / stats.total_variations * 100).toFixed(2) : '0');
+                const reasons = stats.reasons ? Object.entries(stats.reasons).filter(([,v]) => v>0).map(([k,v]) => k + ':' + v).join(', ') : '';
+                tr.innerHTML = '<td>' + tax + '</td>' +
+                    '<td>' + (stats.updated || 0) + '</td>' +
+                    '<td>' + (stats.skipped || 0) + '</td>' +
+                    '<td>' + (stats.total_variations || 0) + '</td>' +
+                    '<td>' + pct + '</td>' +
+                    '<td>' + reasons + '</td>';
+                tbody.appendChild(tr);
+            });
+            table.appendChild(tbody);
+            const header = document.createElement('h3');
+            header.textContent = __('Resumo de variações', 'local2global');
+            container.appendChild(header);
+            container.appendChild(table);
+        }
     }
 
     function discoverAttributes() {
