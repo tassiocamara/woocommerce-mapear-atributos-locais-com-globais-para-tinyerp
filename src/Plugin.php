@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Evolury\Local2Global;
 
 use Evolury\Local2Global\Admin\UI;
+use Evolury\Local2Global\Admin\Settings;
 use Evolury\Local2Global\Cli\CLI_Command;
 use Evolury\Local2Global\Rest\Rest_Controller;
 use Evolury\Local2Global\Services\Discovery_Service;
@@ -67,6 +68,9 @@ class Plugin {
         if ( is_admin() ) {
             $this->admin_ui = new UI( $this->plugin_url );
             $this->admin_ui->hooks();
+            // Settings page (logging toggle)
+            $settings = new Settings();
+            $settings->init();
         }
 
         $this->rest = new Rest_Controller( $this->discovery, $this->mapping, $this->logger );

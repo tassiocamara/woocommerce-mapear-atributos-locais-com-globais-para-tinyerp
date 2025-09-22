@@ -11,9 +11,15 @@ class Logger {
 
     /** @var array<int, array<string, mixed>> */
     private array $context_stack = [];
+    private bool $enabled;
 
     public function __construct() {
-        $this->logger = wc_get_logger();
+        $this->logger  = wc_get_logger();
+        $this->refresh_enabled();
+        // Atualiza flag quando a opção for alterada
+        \add_action( 'update_option_local2global_logging_enabled', function( $old, $new ) {
+            $this->enabled = ( $new !== 'no' );
+        }, 10, 2 );
     }
 
     public function scoped( array $context, callable $callback ) {
@@ -35,15 +41,27 @@ class Logger {
     }
 
     public function info( string $message, array $context = [] ): void {
+        if ( ! $this->enabled ) { return; }
         $this->logger->info( $message, $this->prepare_context( $context ) );
     }
 
     public function warning( string $message, array $context = [] ): void {
+        if ( ! $this->enabled ) { return; }
         $this->logger->warning( $message, $this->prepare_context( $context ) );
     }
 
     public function error( string $message, array $context = [] ): void {
+        if ( ! $this->enabled ) { return; }
         $this->logger->error( $message, $this->prepare_context( $context ) );
+    }
+
+    public function set_enabled( bool $enabled ): void {
+        $this->enabled = $enabled;
+    }
+
+    private function refresh_enabled(): void {
+        $value         = \get_option( 'local2global_logging_enabled', 'yes' );
+        $this->enabled = $value !== 'no';
     }
 
     private function prepare_context( array $context ): array {

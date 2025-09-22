@@ -37,6 +37,84 @@ wp local2global map --product=123 --attr="Cor:pa_cor" --term="Azul:azul" --creat
 
 ## Debug & Teste
 
+### Configuração de Logs
+
+Você pode ativar/desativar os logs do plugin em:
+
+`Configurações > Local2Global > Ativar logs`
+
+Implementação:
+- Option: `local2global_logging_enabled` (`yes`|`no`, default `yes`)
+- Checkbox envia sempre um hidden `no` + `yes` quando marcado, garantindo persistência correta.
+- Logger atualiza dinamicamente a flag em runtime via hook `update_option_local2global_logging_enabled`.
+
+Para forçar via código (ex.: mu-plugin):
+```php
+update_option( 'local2global_logging_enabled', 'no' ); // Desliga
+update_option( 'local2global_logging_enabled', 'yes' ); // Religa
+```
+
+Observação: Erros internos críticos do WooCommerce podem continuar sendo registrados pelo core, mesmo com os logs do plugin desativados.
+
+### Configurações Globais de Comportamento
+
+Todas as opções operacionais principais podem ser definidas globalmente em:
+
+`Configurações > Local2Global`
+
+Opções disponíveis (armazenadas como `yes|no`):
+- `auto_create_terms` – Cria automaticamente termos ainda inexistentes quando marcados como "create" ou quando o mapeamento não especifica explicitamente.
+- `update_variations` – Ativa o processamento das variações após mapear os atributos no produto principal.
+- `create_backup` – Gera snapshot (antes/depois) das metas de atributos para rollback ou auditoria.
+- `hydrate_variations` – Habilita modo de hidratação (recupera metadados ausentes das variações).
+- `aggressive_hydrate_variations` – Expande hidratação com heurísticas (título/SKU/padrões numéricos) e evita falsos positivos (candidatos múltiplos => ambíguo).
+- `save_template_default` – Se ativo, salva por padrão um template reutilizável ao final do mapeamento, a menos que explicitamente desativado em um fluxo custom.
+
+Precedência (mais forte → mais fraco):
+1. Parâmetro explícito da requisição REST / flags CLI / UI do assistente.
+2. Valor global salvo em `Configurações > Local2Global`.
+3. Fallback interno (false) quando nem requisição nem global habilitam.
+
+Isso significa que você pode omitir `options` nas chamadas REST/CLI para usar os defaults globais, reduzindo verbosidade e garantindo consistência operacional.
+
+Exemplo REST usando apenas defaults globais (sem bloco `options`):
+```bash
+curl -s -X POST "https://seusite.test/wp-json/local2global/v1/map" \
+	-H "Content-Type: application/json" \
+	-H "Cookie: (sessao admin)" \
+	-d '{
+		"product_id": 123,
+		"mode": "apply",
+		"mapping": [
+			{
+				"local_attr": "Cor",
+				"local_label": "Cor",
+				"target_tax": "pa_cor",
+				"create_attribute": true,
+				"terms": [
+					{ "local_value": "Azul", "term_slug": "azul", "create": true },
+					{ "local_value": "Vermelho", "term_slug": "vermelho", "create": true }
+				]
+			}
+		]
+	}'
+```
+
+Exemplo CLI (omitindo flags para confiar nos defaults):
+```bash
+wp local2global map --product=123 \
+	--attr="Cor:pa_cor" \
+	--term="Azul:azul" --term="Vermelho:vermelho"
+```
+
+Se precisar contrariar o default global apenas em um caso específico, forneça a flag/option explicitamente (ex.: `--backup=0` ou `"create_backup": false`).
+
+Bloco de ajuda na página de configurações inclui orientação resumida de quando ativar cada opção:
+- Ative `hydrate_variations` quando houve limpeza prévia de meta local e você quer reconstruir referências.
+- Ative `aggressive_hydrate_variations` apenas quando existir multi-termo e perda alta de meta; mantenha desligado para cenários simples (minimiza ruído de inferência ambígua).
+- `create_backup` recomendado antes de grandes lotes, pode ser desligado para execuções repetitivas de rotina (ganho marginal de performance).
+- `save_template_default` útil em ciclo de padronização inicial; desligue depois de estabilizar os conjuntos de atributos.
+
 ### Endpoints REST
 
 Descoberta de atributos locais de um produto:
