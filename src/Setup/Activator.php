@@ -14,10 +14,8 @@ class Activator {
             return;
         }
 
-        $basename = $this->plugin_basename;
+        $plugin_file = \WP_PLUGIN_DIR . '/' . $this->plugin_basename;
 
-        add_action( 'before_woocommerce_init', static function () use ( $basename ): void {
-            FeaturesUtil::declare_compatibility( 'custom_order_tables', $basename, true );
-        } );
+        FeaturesUtil::declare_compatibility( 'custom_order_tables', $plugin_file, true );
     }
 }

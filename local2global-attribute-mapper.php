@@ -5,7 +5,7 @@
  * Plugin URI: https://evolury.com.br
  * Author: Tássio Câmara
  * Author URI: https://evolury.com.br
- * Version: 0.1.0
+ * Version: 0.1.1
  * Requires at least: 6.4
  * Requires PHP: 8.1
  * Text Domain: local2global
@@ -22,7 +22,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-const VERSION = '0.1.0';
+const VERSION = '0.1.1';
 
 /**
  * Autoloader simplificado baseado em PSR-4.
@@ -52,6 +52,12 @@ function on_activation(): void {
     ( new Setup\Activator( plugin_basename( __FILE__ ) ) )->maybe_declare_hpos_compatibility();
 }
 register_activation_hook( __FILE__, __NAMESPACE__ . '\\on_activation' );
+
+add_action( 'before_woocommerce_init', static function (): void {
+    if ( class_exists( \Automattic\WooCommerce\Utilities\FeaturesUtil::class ) ) {
+        \Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility( 'custom_order_tables', __FILE__, true );
+    }
+}, 5 );
 
 /**
  * Bootstrap principal do plugin. Executa apenas após o WooCommerce inicializar.
