@@ -131,7 +131,7 @@ class Term_Service {
                         'term_id' => (int) $term->term_id,
                         'slug'    => (string) $term->slug,
                     ];
-                    $this->logger->info( 'Termo existente localizado.', [ 'taxonomy' => $taxonomy, 'slug' => $slug, 'term_id' => (int) $term->term_id ] );
+                    $this->logger->info( 'term.reuse', [ 'taxonomy' => $taxonomy, 'slug' => $slug, 'term_id' => (int) $term->term_id, 'source' => 'lookup' ] );
                 }
             }
 
@@ -153,7 +153,7 @@ class Term_Service {
                     'slug'    => (string) $slug,
                 ];
                 $created  = true;
-                $this->logger->info( 'Termo criado.', [ 'taxonomy' => $taxonomy, 'slug' => $slug, 'term_id' => (int) $result['term_id'] ] );
+                $this->logger->info( 'term.created', [ 'taxonomy' => $taxonomy, 'slug' => $slug, 'term_id' => (int) $result['term_id'] ] );
             }
 
             $this->set_cached_term( $taxonomy, $existing['slug'], $existing );
@@ -165,7 +165,7 @@ class Term_Service {
                 'created'     => $created,
             ];
             if ( ! $created ) {
-                $this->logger->info( 'Termo reaproveitado.', [ 'taxonomy' => $taxonomy, 'slug' => $existing['slug'], 'term_id' => $existing['term_id'] ] );
+                $this->logger->info( 'term.reuse', [ 'taxonomy' => $taxonomy, 'slug' => $existing['slug'], 'term_id' => $existing['term_id'], 'source' => 'cache_or_lookup' ] );
             }
         }
 

@@ -338,6 +338,9 @@ class Mapping_Service {
                         'existing_terms' => $results['existing_terms'][$tax] ?? [],
                         'variations'     => $results['variations'][$tax] ?? null,
                     ];
+                    if ( isset( $summary[$tax]['variations']['reasons'] ) ) {
+                        $summary[$tax]['variation_reasons'] = $summary[$tax]['variations']['reasons'];
+                    }
                 }
                 $this->logger->info( 'apply.completed', [ 'updated' => count( $results['updated_attrs'] ), 'summary' => $summary ] );
 
@@ -358,6 +361,7 @@ class Mapping_Service {
         $debug_list = [];
         foreach ( $attributes as $idx => $attr_debug ) {
             if ( $attr_debug instanceof WC_Product_Attribute ) {
+                if ( str_starts_with( $attr_debug->get_name(), 'pa_' ) ) { continue; }
                 $debug_list[] = [ 'index' => $idx, 'name' => $attr_debug->get_name(), 'normalized' => $this->normalize_attribute_name( $attr_debug->get_name() ) ];
             }
         }
