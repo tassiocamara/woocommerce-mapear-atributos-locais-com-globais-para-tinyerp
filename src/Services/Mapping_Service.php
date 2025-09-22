@@ -112,7 +112,7 @@ class Mapping_Service {
             $attribute_info = $this->terms->ensure_global_attribute( $target_tax, $attribute_mapping['target_label'] ?? $local_label, $create_attr, $attribute_mapping['attribute_args'] ?? [] );
             $term_results   = $this->terms->ensure_terms( $attribute_info['taxonomy'], $terms_config, ! empty( $options['auto_create_terms'] ) );
 
-            $term_ids   = array_values( array_unique( array_map( static fn( array $item ) => $item['term_id'], $term_results ) ) );
+            $term_ids   = array_values( array_unique( array_map( static fn( array $item ) => (int) $item['term_id'], $term_results ) ) );
             $slug_map   = [];
             $created    = [];
             $existing   = [];
@@ -132,7 +132,7 @@ class Mapping_Service {
                 throw new RuntimeException( sprintf( 'Não foi possível localizar o atributo local %s no produto.', $local_name ) );
             }
 
-            wp_set_object_terms( $product_id, $term_ids, $attribute_info['taxonomy'], false );
+            wp_set_object_terms( $product_id, array_map( 'intval', $term_ids ), $attribute_info['taxonomy'], false );
 
             if ( ! empty( $options['update_variations'] ) ) {
                 $variation_stats = $this->variations->update_variations( $product, $attribute_info['taxonomy'], $local_name, $slug_map );
@@ -164,30 +164,40 @@ class Mapping_Service {
     }
 
     private function replace_attribute( WC_Product $product, string $local_name, string $taxonomy, int $attribute_id, array $term_ids ): bool {
-        $attributes = $product->get_attributes();
+        if ( ! taxonomy_exists( $taxonomy ) ) {
+            throw new RuntimeException( sprintf( 'Taxonomia %s não registrada.', $taxonomy ) );
+        }
+
+        $attributes = $this->normalize_product_attributes( $product->get_attributes() );
         $replaced   = false;
+        $local_key  = $this->normalize_attribute_name( $local_name );
 
         foreach ( $attributes as $index => $attribute ) {
             if ( ! $attribute instanceof WC_Product_Attribute ) {
                 continue;
             }
 
-            $attr_name = sanitize_title( $attribute->get_name() );
-            if ( $attr_name !== sanitize_title( $local_name ) ) {
+            $attr_name = $this->normalize_attribute_name( $attribute->get_name() );
+            if ( $attr_name !== $local_key ) {
                 continue;
             }
 
             $new_attribute = new WC_Product_Attribute();
             $new_attribute->set_id( $attribute_id );
             $new_attribute->set_name( $taxonomy );
-            $new_attribute->set_options( $term_ids );
+            $new_attribute->set_options( array_map( 'intval', $term_ids ) );
             $new_attribute->set_visible( $attribute->get_visible() );
             $new_attribute->set_variation( $attribute->get_variation() );
             $new_attribute->set_position( $attribute->get_position() );
-            $new_attribute->set_is_taxonomy( true );
+            $new_attribute->set_taxonomy( true );
 
-            $attributes[ $index ] = $new_attribute;
-            $replaced              = true;
+            $attributes[ $taxonomy ] = $new_attribute;
+
+            if ( $index !== $taxonomy ) {
+                unset( $attributes[ $index ] );
+            }
+
+            $replaced = true;
             break;
         }
 
@@ -200,6 +210,69 @@ class Mapping_Service {
 
     private function normalize_local_value( string $value ): string {
         return strtolower( trim( wc_clean( $value ) ) );
+    }
+
+    /**
+     * @param array<int|string, mixed> $attributes
+     * @return array<int|string, WC_Product_Attribute>
+     */
+    private function normalize_product_attributes( array $attributes ): array {
+        $normalized = [];
+
+        foreach ( $attributes as $index => $attribute ) {
+            if ( $attribute instanceof WC_Product_Attribute ) {
+                $normalized[ $index ] = $attribute;
+                continue;
+            }
+
+            if ( is_array( $attribute ) ) {
+                $normalized[ $index ] = $this->create_attribute_from_legacy( $index, $attribute );
+            }
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * @param int|string $index
+     * @param array<string, mixed> $attribute
+     */
+    private function create_attribute_from_legacy( $index, array $attribute ): WC_Product_Attribute {
+        $legacy     = new WC_Product_Attribute();
+        $name       = (string) ( $attribute['name'] ?? ( is_string( $index ) ? $index : '' ) );
+        $is_tax     = ! empty( $attribute['is_taxonomy'] );
+        $options    = [];
+
+        if ( $is_tax ) {
+            $options = array_map( 'intval', (array) ( $attribute['options'] ?? [] ) );
+        } else {
+            if ( isset( $attribute['options'] ) ) {
+                $options = array_map( 'strval', (array) $attribute['options'] );
+            } elseif ( isset( $attribute['value'] ) ) {
+                $value   = (string) $attribute['value'];
+                $options = '' === $value ? [] : ( function_exists( 'wc_get_text_attributes' ) ? wc_get_text_attributes( $value ) : array_map( 'trim', explode( '|', $value ) ) );
+            }
+        }
+
+        $legacy->set_id( (int) ( $attribute['id'] ?? 0 ) );
+        $legacy->set_name( $name );
+        $legacy->set_options( $options );
+        $legacy->set_position( (int) ( $attribute['position'] ?? 0 ) );
+        $legacy->set_visible( ! empty( $attribute['is_visible'] ) );
+        $legacy->set_variation( ! empty( $attribute['is_variation'] ) );
+        $legacy->set_taxonomy( $is_tax );
+
+        return $legacy;
+    }
+
+    private function normalize_attribute_name( string $name ): string {
+        $normalized = sanitize_title( $name );
+
+        if ( '' !== $normalized ) {
+            return $normalized;
+        }
+
+        return mb_strtolower( $name );
     }
 
     private function sanitize_taxonomy( string $taxonomy ): string {
