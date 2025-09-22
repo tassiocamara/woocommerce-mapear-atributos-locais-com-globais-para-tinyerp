@@ -81,13 +81,24 @@ Principais marcadores de log:
 
 | Evento | Descrição |
 |--------|-----------|
+| Evento | Descrição |
+|--------|-----------|
 | `apply.start` | Início da aplicação de um lote de atributos |
-| `attribute.process.start` / `end` | Processamento de um atributo local específico |
-| `replace_attribute.scan` | Lista de candidatos encontrados ao substituir o atributo |
+| `apply.options` | Opções normalizadas (auto_create_terms, update_variations, create_backup) |
+| `attributes.snapshot.before` / `attributes.snapshot.after` | Estado bruto dos atributos antes/depois |
+| `attribute.process.start` / `attribute.process.end` | Processamento de um atributo local específico |
+| `replace_attribute.scan` | Lista candidatos (filtra já taxonômicos) para substituição do atributo local |
 | `replace_attribute.success` | Substituição concluída para taxonomia alvo |
-| `variation.slug_map_missing` | Valor de variação sem correspondência no novo atributo global |
-| `apply.term_assignment` | Atribuição de termos ao produto (produto principal) |
-| `apply.completed` | Resumo final (termos criados, existentes, variações) |
+| `replace_attribute.not_found` | Atributo local não localizado pelo nome normalizado |
+| `term.created` | Termo criado na taxonomia alvo |
+| `term.reuse` | Termo existente reutilizado (source: lookup/cache_or_lookup) |
+| `variation.slug_map_missing` | Valor de variação não mapeado no slug_map |
+| `variation.update.summary` | Resultado por atributo (updated, skipped, reasons) |
+| `apply.term_assignment` | Atribuição de termos ao produto principal |
+| `apply.completed` | Resumo final (terms, variações, variation_reasons) |
+| `variation.resync.start` | Início de reprocessamento isolado de variações |
+| `variation.resync.summary` | Agregado de todas as taxonomias (updated, skipped, reasons) |
+| `variation.resync.completed` | Detalhes por taxonomia no resync |
 | `permission.denied` | Falha de permissão em endpoint REST |
 
 ### Diagnóstico de Falhas Comuns
@@ -154,12 +165,27 @@ Resposta:
 {
 	"ok": true,
 	"corr_id": "...",
-	"result": { "product_id":123, "taxonomies": { "pa_cor":{"updated":1,"skipped":2} } }
+	"result": {
+		"product_id":123,
+		"taxonomies": {
+			"pa_cor": {"updated":1, "skipped":2, "reasons": {"missing_source_meta":1,"already_ok":1,"no_slug_match":0}}
+		},
+		"aggregate": {"updated":1,"skipped":2,"reasons":{"missing_source_meta":1,"already_ok":1,"no_slug_match":0}}
+	}
 }
 ```
 
 ### Estratégia de Normalização
 
 Todos os valores locais e de variações passam por normalização unificada (classe `Value_Normalizer`) removendo acentos e diacríticos para casar com slugs de termos.
+
+### Interpretação de `variation.update.summary` e `variation.resync.summary`
+
+Campos de razões:
+- `missing_source_meta`: A variação não possui mais a meta antiga (`attribute_<local>`) para migrar.
+- `no_slug_match`: Valor local normalizado não encontrou slug correspondente.
+- `already_ok`: Já possuía meta `attribute_pa_*` e não havia meta local para migrar.
+
+Use `variation.resync.summary` para verificar rapidamente eficácia de uma rodada de reprocessamento após corrigir termos ou valores.
 
 

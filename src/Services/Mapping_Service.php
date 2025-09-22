@@ -338,6 +338,9 @@ class Mapping_Service {
                         'existing_terms' => $results['existing_terms'][$tax] ?? [],
                         'variations'     => $results['variations'][$tax] ?? null,
                     ];
+                    if ( isset( $summary[$tax]['variations']['reasons'] ) ) {
+                        $summary[$tax]['variation_reasons'] = $summary[$tax]['variations']['reasons'];
+                    }
                 }
                 $this->logger->info( 'apply.completed', [ 'updated' => count( $results['updated_attrs'] ), 'summary' => $summary ] );
 
@@ -358,6 +361,7 @@ class Mapping_Service {
         $debug_list = [];
         foreach ( $attributes as $idx => $attr_debug ) {
             if ( $attr_debug instanceof WC_Product_Attribute ) {
+                if ( str_starts_with( $attr_debug->get_name(), 'pa_' ) ) { continue; }
                 $debug_list[] = [ 'index' => $idx, 'name' => $attr_debug->get_name(), 'normalized' => $this->normalize_attribute_name( $attr_debug->get_name() ) ];
             }
         }
@@ -560,9 +564,24 @@ class Mapping_Service {
                     $stats = $this->variations->update_variations( $product, $tax, $local_guess, $slug_map, $corr_id );
                     $results[ $tax ] = $stats;
                 }
-
+                // Agrega razões
+                $aggregate = [ 'updated' => 0, 'skipped' => 0, 'reasons' => [ 'missing_source_meta' => 0, 'no_slug_match' => 0, 'already_ok' => 0 ] ];
+                foreach ( $results as $tax => $stats ) {
+                    $aggregate['updated'] += (int) ( $stats['updated'] ?? 0 );
+                    $aggregate['skipped'] += (int) ( $stats['skipped'] ?? 0 );
+                    if ( isset( $stats['reasons'] ) && is_array( $stats['reasons'] ) ) {
+                        foreach ( $stats['reasons'] as $reason => $count ) {
+                            if ( isset( $aggregate['reasons'][ $reason ] ) ) {
+                                $aggregate['reasons'][ $reason ] += (int) $count;
+                            } else {
+                                $aggregate['reasons'][ $reason ] = (int) $count; // caso futuro
+                            }
+                        }
+                    }
+                }
+                $this->logger->info( 'variation.resync.summary', [ 'aggregate' => $aggregate, 'taxonomies' => array_keys( $results ) ] );
                 $this->logger->info( 'variation.resync.completed', [ 'taxonomies' => $results ] );
-                return [ 'product_id' => $product_id, 'taxonomies' => $results ];
+                return [ 'product_id' => $product_id, 'taxonomies' => $results, 'aggregate' => $aggregate ];
             }
         );
     }
