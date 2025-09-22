@@ -67,10 +67,18 @@ add_action( 'before_woocommerce_init', static function (): void {
  * Bootstrap principal do plugin. Executa apenas após o WooCommerce inicializar.
  */
 function bootstrap(): void {
-    // Garante que o WooCommerce está carregado antes de inicializar o plugin.
-    if ( ! class_exists( '\\WooCommerce' ) || ! did_action( 'woocommerce_loaded' ) ) {
+    static $bootstrapped = false;
+
+    if ( $bootstrapped ) {
         return;
     }
+
+    // Garante que o WooCommerce está carregado antes de inicializar o plugin.
+    if ( ! class_exists( '\\WooCommerce' ) || ! did_action( 'woocommerce_init' ) ) {
+        return;
+    }
+
+    $bootstrapped = true;
 
     load_plugin_textdomain( 'local2global', false, dirname( plugin_basename( __FILE__ ) ) . '/languages' );
 
@@ -78,4 +86,4 @@ function bootstrap(): void {
     $plugin = new Plugin( plugin_dir_path( __FILE__ ), plugin_basename( __FILE__ ) );
     $plugin->init();
 }
-add_action( 'woocommerce_init', __NAMESPACE__ . '\\bootstrap', 20 );
+add_action( 'init', __NAMESPACE__ . '\\bootstrap', 20 );
