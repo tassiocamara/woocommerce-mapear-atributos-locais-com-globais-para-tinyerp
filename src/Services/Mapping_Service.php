@@ -184,7 +184,7 @@ class Mapping_Service {
             $new_attribute->set_visible( $attribute->get_visible() );
             $new_attribute->set_variation( $attribute->get_variation() );
             $new_attribute->set_position( $attribute->get_position() );
-            $new_attribute->set_taxonomy( true );
+            $new_attribute->set_is_taxonomy( true );
 
             $attributes[ $index ] = $new_attribute;
             $replaced              = true;
