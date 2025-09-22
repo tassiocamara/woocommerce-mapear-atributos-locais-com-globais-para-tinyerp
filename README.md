@@ -37,6 +37,25 @@ wp local2global map --product=123 --attr="Cor:pa_cor" --term="Azul:azul" --creat
 
 ## Debug & Teste
 
+### Configuração de Logs
+
+Você pode ativar/desativar os logs do plugin em:
+
+`Configurações > Local2Global > Ativar logs`
+
+Implementação:
+- Option: `local2global_logging_enabled` (`yes`|`no`, default `yes`)
+- Checkbox envia sempre um hidden `no` + `yes` quando marcado, garantindo persistência correta.
+- Logger atualiza dinamicamente a flag em runtime via hook `update_option_local2global_logging_enabled`.
+
+Para forçar via código (ex.: mu-plugin):
+```php
+update_option( 'local2global_logging_enabled', 'no' ); // Desliga
+update_option( 'local2global_logging_enabled', 'yes' ); // Religa
+```
+
+Observação: Erros internos críticos do WooCommerce podem continuar sendo registrados pelo core, mesmo com os logs do plugin desativados.
+
 ### Endpoints REST
 
 Descoberta de atributos locais de um produto:
