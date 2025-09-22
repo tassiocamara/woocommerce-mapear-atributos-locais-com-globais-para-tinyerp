@@ -1,0 +1,111 @@
+.local2global-button-wrap {
+    margin: 1em 0;
+}
+
+body.modal-open {
+    overflow: hidden;
+}
+
+.local2global-modal[hidden] {
+    display: none;
+}
+
+.local2global-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 100000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: inherit;
+}
+
+.local2global-modal__overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+}
+
+.local2global-modal__content {
+    position: relative;
+    background: #fff;
+    border-radius: 6px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+    width: 900px;
+    max-width: 95vw;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.local2global-modal__header,
+.local2global-modal__footer {
+    padding: 16px 24px;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.local2global-modal__footer {
+    border-bottom: 0;
+    border-top: 1px solid #e0e0e0;
+    display: flex;
+    justify-content: space-between;
+}
+
+.local2global-modal__body {
+    padding: 24px;
+    overflow: auto;
+}
+
+.local2global-modal__close {
+    border: 0;
+    background: transparent;
+    font-size: 24px;
+    cursor: pointer;
+}
+
+.local2global-step {
+    display: none;
+}
+
+.local2global-step.is-active {
+    display: block;
+}
+
+.local2global-attribute-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.local2global-attribute-table th,
+.local2global-attribute-table td {
+    padding: 8px;
+    border-bottom: 1px solid #e5e5e5;
+    text-align: left;
+}
+
+.local2global-summary {
+    background: #f8f9fa;
+    border: 1px solid #dfe2e6;
+    padding: 16px;
+    border-radius: 4px;
+}
+
+.local2global-log {
+    max-height: 200px;
+    overflow-y: auto;
+    background: #1d2327;
+    color: #fff;
+    font-family: monospace;
+    padding: 12px;
+    border-radius: 4px;
+}
+
+.local2global-tag {
+    display: inline-block;
+    padding: 2px 6px;
+    margin-inline-end: 4px;
+    border-radius: 3px;
+    background: #e0f2ff;
+    color: #1f6feb;
+    font-size: 12px;
+}
