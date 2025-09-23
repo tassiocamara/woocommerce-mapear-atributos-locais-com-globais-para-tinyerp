@@ -5,7 +5,7 @@
  * Plugin URI: https://evolury.com.br
  * Author: Tássio Câmara
  * Author URI: https://evolury.com.br
- * Version: 0.3.1
+ * Version: 0.3.2
  * Requires at least: 6.4
  * Requires PHP: 8.1
  * Text Domain: local2global
