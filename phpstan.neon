@@ -1,0 +1,22 @@
+includes:
+    - vendor/szepeviktor/phpstan-wordpress/extension.neon
+
+parameters:
+    level: 1  # Começando com nível básico
+    paths:
+        - src
+    stubFiles:
+        - vendor/php-stubs/wordpress-stubs/wordpress-stubs.php
+        - vendor/php-stubs/woocommerce-stubs/woocommerce-stubs.php
+    excludePaths:
+        - tests/*
+    # Configurações de performance
+    parallel:
+        maximumNumberOfProcesses: 1  # Reduzir uso de memória
+    # Ignora warnings específicos do WordPress que são seguros
+    ignoreErrors:
+        - '#Function apply_filters invoked with [0-9]+ parameters, 2 required#'
+        - '#Function do_action invoked with [0-9]+ parameters, 1-2 required#'
+        # Ignora alguns tipos dinâmicos do WooCommerce que são difíceis de tipar
+        - '#Cannot call method [a-zA-Z_]+\(\) on mixed#'
+    treatPhpDocTypesAsCertain: false
