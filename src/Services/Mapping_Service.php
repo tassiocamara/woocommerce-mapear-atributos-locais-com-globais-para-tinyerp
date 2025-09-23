@@ -1,5 +1,4 @@
 <?php
-
 declare(strict_types=1);
 
 namespace Evolury\Local2Global\Services;
@@ -12,6 +11,11 @@ use WC_Product;
 use WC_Product_Attribute;
 use WC_Product_Variable;
 use WP_Error;
+
+// Stub mínimo para análise estática quando WooCommerce/WordPress não carregado.
+if ( ! function_exists( '\\term_exists' ) ) {
+    function term_exists( $term, $taxonomy = '', $parent = null ) { return 0; }
+}
 
 class Mapping_Service {
     public function __construct(
@@ -54,6 +58,8 @@ class Mapping_Service {
                     $term_actions  = [ 'create' => [], 'existing' => [] ];
                     $term_errors   = [];
 
+                    $this->logger->info( 'dry_run.attribute.start', [ 'local_label' => $local_label, 'target_tax' => $target_tax, 'create_attribute' => $create_attr ] );
+
                     if ( '' === $target_tax ) {
                         $term_errors[] = __( 'Taxonomia alvo não informada.', 'local2global' );
                     }
@@ -70,19 +76,17 @@ class Mapping_Service {
                     foreach ( $attribute_mapping['terms'] ?? [] as $term_map ) {
                         $local_value = (string) ( $term_map['local_value'] ?? '' );
                         $slug        = sanitize_title( $term_map['term_slug'] ?? $term_map['term_name'] ?? $local_value );
-                        $term = null;
-                        if ( $attribute_exists ) {
-                            if ( function_exists( 'term_exists' ) ) {
-                                $term = \term_exists( $slug, $target_tax );
-                            }
-                        }
-
+                        $term = null; // evitamos chamada term_exists em dry_run fora do ambiente WP
+                        $log_context = [ 'local_value' => $local_value, 'slug' => $slug, 'attribute_exists' => $attribute_exists, 'target_tax' => $target_tax ];
                         if ( $term ) {
                             $term_actions['existing'][] = $local_value;
+                            $this->logger->info( 'dry_run.term.existing', $log_context );
                         } elseif ( ! empty( $term_map['create'] ) || ! $attribute_exists ) {
                             $term_actions['create'][] = [ 'value' => $local_value, 'slug' => $slug ];
+                            $this->logger->info( 'dry_run.term.create', $log_context + [ 'reason' => ! $attribute_exists ? 'attribute_will_be_created' : 'flag_create' ] );
                         } else {
                             $term_errors[] = sprintf( __( 'Termo %1$s não encontrado na taxonomia %2$s.', 'local2global' ), $local_value, $target_tax );
+                            $this->logger->warning( 'dry_run.term.missing', $log_context );
                         }
                     }
 
@@ -94,6 +98,13 @@ class Mapping_Service {
                         'terms'            => $term_actions,
                         'errors'           => $term_errors,
                     ];
+
+                    $this->logger->info( 'dry_run.attribute.end', [
+                        'target_tax' => $target_tax,
+                        'term_create_count' => count( $term_actions['create'] ),
+                        'term_existing_count' => count( $term_actions['existing'] ),
+                        'error_count' => count( $term_errors ),
+                    ] );
 
                     $report['errors'] = array_merge( $report['errors'], $term_errors );
                 }
@@ -273,6 +284,14 @@ class Mapping_Service {
                                 'slug_map'   => $slug_map,
                             ];
                             $this->logger->info( 'attribute.slug_map', [ 'taxonomy' => $attribute_info['taxonomy'], 'slug_map' => $slug_map ] );
+
+                            $this->logger->info( 'attribute.summary', [
+                                'taxonomy' => $attribute_info['taxonomy'],
+                                'created_terms' => $created,
+                                'existing_terms' => $existing,
+                                'term_created_count' => count( $created ),
+                                'term_existing_count' => count( $existing ),
+                            ] );
 
                             // save_template removido
 
