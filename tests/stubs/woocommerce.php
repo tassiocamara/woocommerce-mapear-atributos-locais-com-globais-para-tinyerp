@@ -2,6 +2,20 @@
 
 declare(strict_types=1);
 
+// Add random_int function if not exists (for PHP < 7.0 compatibility in tests)
+if (!function_exists('random_int')) {
+    /**
+     * Generate a random integer
+     * @param int $min
+     * @param int $max
+     * @return int
+     */
+    function random_int(int $min, int $max): int {
+        $range = $max - $min;
+        return $min + (int) (microtime(true) * 1000000) % ($range + 1);
+    }
+}
+
 class WP_Error {
     private string $code;
     private string $message;
@@ -123,16 +137,19 @@ class WC_Product_Variation extends WC_Product {
         parent::__construct( [], $id );
     }
 
-    public function get_meta( string $key ): string {
-        return $this->meta[ $key ] ?? '';
+    public function get_meta($key = '', $single = true, $context = 'view') {
+        if (empty($key)) {
+            return $this->meta;
+        }
+        return $this->meta[$key] ?? '';
     }
 
-    public function update_meta_data( string $key, string $value ): void {
-        $this->meta[ $key ] = $value;
+    public function update_meta_data($key, $value, $meta_id = 0): void {
+        $this->meta[$key] = $value;
     }
 
-    public function delete_meta_data( string $key ): void {
-        unset( $this->meta[ $key ] );
+    public function delete_meta_data($key): void {
+        unset($this->meta[$key]);
     }
 
     public function get_all_meta(): array {

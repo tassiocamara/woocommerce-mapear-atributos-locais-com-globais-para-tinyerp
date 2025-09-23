@@ -68,7 +68,7 @@ class Plugin {
         $this->rest = new Rest_Controller( $this->discovery, $this->mapping, $this->logger );
         add_action( 'rest_api_init', [ $this->rest, 'register_routes' ] );
 
-        if ( defined( 'WP_CLI' ) && WP_CLI ) {
+        if ( defined( 'WP_CLI' ) && constant( 'WP_CLI' ) ) {
             \WP_CLI::add_command( 'local2global', new CLI_Command( $this->mapping ) );
         }
     }

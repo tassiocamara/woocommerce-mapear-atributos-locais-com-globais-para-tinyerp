@@ -8,6 +8,7 @@ parameters:
     stubFiles:
         - vendor/php-stubs/wordpress-stubs/wordpress-stubs.php
         - vendor/php-stubs/woocommerce-stubs/woocommerce-stubs.php
+        - vendor/php-stubs/wp-cli-stubs/wp-cli-stubs.php
     excludePaths:
         - tests/*
     # Configurações de performance

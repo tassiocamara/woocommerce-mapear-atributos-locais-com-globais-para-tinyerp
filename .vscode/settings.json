@@ -4,7 +4,8 @@
     // Configuração do Intelephense para WordPress/WooCommerce
     "intelephense.environment.includePaths": [
         "./vendor/php-stubs/wordpress-stubs",
-        "./vendor/php-stubs/woocommerce-stubs"
+        "./vendor/php-stubs/woocommerce-stubs",
+        "./vendor/php-stubs/wp-cli-stubs"
     ],
     
     // Stubs básicos do PHP para melhor autocompletar
