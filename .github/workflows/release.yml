@@ -1,0 +1,50 @@
+name: 🚀 Create Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Get version from tag
+      id: version
+      run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+      
+    - name: Create clean build
+      run: |
+        mkdir -p builds/temp
+        rsync -av --exclude-from='.buildignore' . builds/temp/local2global-attribute-mapper/
+        cd builds/temp
+        zip -r ../local2global-attribute-mapper-v${{ steps.version.outputs.VERSION }}.zip local2global-attribute-mapper/
+        
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: builds/local2global-attribute-mapper-v${{ steps.version.outputs.VERSION }}.zip
+        body: |
+          ## 🎉 Local 2 Global Attribute Mapper v${{ steps.version.outputs.VERSION }}
+          
+          ### 📦 Download
+          Use o arquivo ZIP abaixo para instalação limpa no WordPress.
+          
+          ### 🔧 Instalação
+          1. Baixe o arquivo `local2global-attribute-mapper-v${{ steps.version.outputs.VERSION }}.zip`
+          2. No WordPress Admin → Plugins → Adicionar novo → Enviar plugin
+          3. Selecione o arquivo baixado e clique em "Instalar agora"
+          4. Ative o plugin
+          
+          ### 📋 Compatibilidade
+          - WordPress 6.4+
+          - WooCommerce 8.6+  
+          - PHP 8.1+
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

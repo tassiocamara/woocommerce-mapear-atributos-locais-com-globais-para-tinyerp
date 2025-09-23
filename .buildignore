@@ -1,0 +1,34 @@
+# Arquivos de desenvolvimento que não vão para a versão limpa
+.git/
+.github/
+.gitignore
+.buildignore
+build.sh
+builds/
+dev.sh
+node_modules/
+.DS_Store
+*.log
+.env
+.env.*
+
+# Testes e desenvolvimento
+tests/
+phpunit.xml
+.phpunit.result.cache
+phpstan.neon
+
+# Composer dev
+vendor/bin/
+vendor/phpstan/
+vendor/php-stubs/
+
+# Documentação de desenvolvimento
+DOCUMENTATION.md
+README.md
+CHANGELOG.md
+
+# Arquivos temporários
+*.tmp
+*.temp
+.cache/
