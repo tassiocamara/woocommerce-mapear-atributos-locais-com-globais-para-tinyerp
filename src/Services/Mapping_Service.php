@@ -338,10 +338,11 @@ class Mapping_Service {
                         $results['variations'][ $job['taxonomy'] ] = $variation_stats;
                     }
 
+                    // CRITICAL: Após todas as variações serem atualizadas, força salvamento completo
+                    $this->force_complete_product_save( $product );
+
                     // Atualiza atributos padrão (default attributes) caso apontem para o atributo local antigo.
                     // (Removido ajuste de atributos padrão para simplificar e evitar dependência de métodos não tipados no analisador.)
-
-                    $product->save();
 
                     $this->logger->info( 'attributes.snapshot.after', $this->describe_attributes( $product->get_attributes() ) );
 
@@ -649,47 +650,319 @@ class Mapping_Service {
     /**
      * Sincronização seletiva que preserva metadados das variações.
      * Atualiza apenas a estrutura necessária para o WooCommerce reconhecer as variações.
+     * Agora com suporte aprimorado para diferentes cenários de atributos.
      */
     private function selective_variation_sync( WC_Product $product ): void {
         if ( ! $product->is_type( 'variable' ) ) {
             return;
         }
 
+        $product_id = $product->get_id();
+        
         // Força atualização dos atributos do produto
         $product->save();
         
         // Limpa caches específicos das variações para forçar reconstrução
         $children = $product->get_children();
         foreach ( $children as $child_id ) {
-            if ( function_exists( 'wp_cache_delete' ) ) {
-                wp_cache_delete( $child_id, 'posts' );
-                wp_cache_delete( $child_id, 'post_meta' );
-            }
-            if ( function_exists( 'clean_post_cache' ) ) {
-                clean_post_cache( $child_id );
-            }
+            $this->clear_variation_cache_comprehensive( $child_id );
         }
         
         // Limpa caches do produto principal
-        if ( function_exists( 'wp_cache_delete' ) ) {
-            wp_cache_delete( $product->get_id(), 'posts' );
-            wp_cache_delete( $product->get_id(), 'post_meta' );
-        }
-        if ( function_exists( 'clean_post_cache' ) ) {
-            clean_post_cache( $product->get_id() );
-        }
+        $this->clear_variation_cache_comprehensive( $product_id );
         
         // Força atualização dos transients do WooCommerce
-        wc_delete_product_transients( $product->get_id() );
+        wc_delete_product_transients( $product_id );
         
         // Atualiza lookup tables se função disponível
         if ( function_exists( 'wc_update_product_lookup_tables' ) ) {
-            wc_update_product_lookup_tables( $product->get_id() );
+            wc_update_product_lookup_tables( $product_id );
+        }
+        
+        // Força regeneração de dados de variação para garantir consistência
+        if ( function_exists( 'wc_delete_product_transients' ) ) {
+            wc_delete_product_transients( $product_id );
+        }
+        
+        // Limpa cache de atributos de variação
+        if ( function_exists( 'wp_cache_delete' ) ) {
+            $cache_key_pattern = "product_variation_attributes_{$product_id}";
+            wp_cache_delete( $cache_key_pattern, 'products' );
         }
         
         $this->logger->info( 'sync.selective_completed', [ 
-            'product_id' => $product->get_id(),
-            'variations_count' => count( $children )
+            'product_id' => $product_id,
+            'variations_count' => count( $children ),
+            'sync_method' => 'comprehensive_cache_clear_with_lookup_tables'
+        ] );
+    }
+
+    /**
+     * Limpeza abrangente de cache para uma variação ou produto
+     * 
+     * @param int $item_id
+     */
+    private function clear_variation_cache_comprehensive( int $item_id ): void {
+        if ( function_exists( 'wp_cache_delete' ) ) {
+            wp_cache_delete( $item_id, 'posts' );
+            wp_cache_delete( $item_id, 'post_meta' );
+            wp_cache_delete( $item_id, 'products' );
+        }
+        
+        if ( function_exists( 'clean_post_cache' ) ) {
+            clean_post_cache( $item_id );
+        }
+        
+        // Limpa caches específicos do WooCommerce
+        if ( function_exists( 'wc_delete_product_transients' ) ) {
+            wc_delete_product_transients( $item_id );
+        }
+    }
+
+    /**
+     * Força salvamento completo do produto seguindo as best practices do WooCommerce
+     * para garantir que as alterações nas variações sejam persistidas corretamente.
+     * 
+     * Esta função implementa a sequência correta:
+     * 1. Salva o produto principal
+     * 2. Força re-salvamento de todas as variações 
+     * 3. Executa sync do WooCommerce
+     * 4. Limpa todos os caches
+     * 
+     * @param WC_Product $product
+     */
+    private function force_complete_product_save( WC_Product $product ): void {
+        $product_id = $product->get_id();
+        
+        // 1. Salva o produto principal primeiro
+        $product->save();
+        
+        $this->logger->info( 'force_save.product_saved', [ 'product_id' => $product_id ] );
+        
+        // 2. Se for produto variável, força re-salvamento de todas as variações
+        if ( $product->is_type( 'variable' ) ) {
+            $children = $product->get_children();
+            $saved_variations = 0;
+            
+            foreach ( $children as $child_id ) {
+                $variation = wc_get_product( $child_id );
+                if ( $variation && $variation instanceof \WC_Product_Variation ) {
+                    // Força o salvamento da variação
+                    $variation_saved_id = $variation->save();
+                    
+                    if ( $variation_saved_id ) {
+                        $saved_variations++;
+                        // Força limpeza de cache imediata
+                        if ( function_exists( 'clean_post_cache' ) ) {
+                            clean_post_cache( $child_id );
+                        }
+                    }
+                }
+            }
+            
+            $this->logger->info( 'force_save.variations_saved', [ 
+                'product_id' => $product_id,
+                'total_variations' => count( $children ),
+                'saved_variations' => $saved_variations
+            ] );
+            
+            // CORREÇÃO CRÍTICA: Backup dos valores antes do sync do WooCommerce
+            $variation_backup = $this->backup_variation_attributes( $children );
+            
+            // 3. Executa sync nativo do WooCommerce DEPOIS de salvar todas as variações
+            if ( class_exists( 'WC_Product_Variable' ) && method_exists( 'WC_Product_Variable', 'sync' ) ) {
+                \WC_Product_Variable::sync( $product_id );
+                $this->logger->info( 'force_save.wc_sync_executed', [ 'product_id' => $product_id ] );
+            }
+            
+            // CORREÇÃO CRÍTICA: Restaura os valores após o sync
+            $this->restore_variation_attributes( $variation_backup );
+        }
+        
+        // 4. Limpeza completa de caches após todo o processo
+        $this->clear_variation_cache_comprehensive( $product_id );
+        
+        // 5. Força atualização das lookup tables se disponível
+        if ( function_exists( 'wc_update_product_lookup_tables' ) ) {
+            wc_update_product_lookup_tables( $product_id );
+        }
+        
+        $this->logger->info( 'force_save.completed', [ 
+            'product_id' => $product_id,
+            'method' => 'force_complete_product_save'
+        ] );
+        
+        // DIAGNÓSTICO: Verificação final de persistência
+        $this->verify_final_persistence( $product_id );
+    }
+    
+    /**
+     * Verifica se os dados foram persistidos corretamente após todo o processo
+     * 
+     * @param int $product_id
+     */
+    private function verify_final_persistence( int $product_id ): void {
+        global $wpdb;
+        
+        // Limpa todos os caches antes de verificar
+        wp_cache_flush();
+        
+        $product = wc_get_product( $product_id );
+        if ( ! $product || ! $product->is_type( 'variable' ) ) {
+            return;
+        }
+        
+        $children = $product->get_children();
+        $verification_results = [];
+        
+        foreach ( $children as $child_id ) {
+            // Busca todos os metadados de atributos da variação diretamente do banco
+            $attributes_db = $wpdb->get_results( $wpdb->prepare(
+                "SELECT meta_key, meta_value FROM {$wpdb->postmeta} 
+                 WHERE post_id = %d AND meta_key LIKE 'attribute_%'",
+                $child_id
+            ), ARRAY_A );
+            
+            // Busca via WooCommerce API
+            $variation = wc_get_product( $child_id );
+            $attributes_wc = [];
+            if ( $variation && is_a( $variation, 'WC_Product_Variation' ) ) {
+                $variation_attrs = $variation->get_variation_attributes( false );
+                foreach ( $variation_attrs as $key => $value ) {
+                    $attributes_wc[ 'attribute_' . $key ] = $value;
+                }
+            }
+            
+            $verification_results[ $child_id ] = [
+                'db_attributes' => $attributes_db,
+                'wc_attributes' => $attributes_wc,
+                'db_pa_cor' => null,
+                'wc_pa_cor' => $attributes_wc[ 'attribute_pa_cor' ] ?? null,
+                'db_pa_tamanho' => null,
+                'wc_pa_tamanho' => $attributes_wc[ 'attribute_pa_tamanho' ] ?? null
+            ];
+            
+            // Extrai valores específicos do banco
+            foreach ( $attributes_db as $attr ) {
+                if ( $attr['meta_key'] === 'attribute_pa_cor' ) {
+                    $verification_results[ $child_id ]['db_pa_cor'] = $attr['meta_value'];
+                }
+                if ( $attr['meta_key'] === 'attribute_pa_tamanho' ) {
+                    $verification_results[ $child_id ]['db_pa_tamanho'] = $attr['meta_value'];
+                }
+            }
+        }
+        
+        $this->logger->info( 'final_verification.complete', [
+            'product_id' => $product_id,
+            'variations_checked' => count( $children ),
+            'results' => $verification_results
+        ] );
+        
+        // Verifica inconsistências
+        foreach ( $verification_results as $child_id => $results ) {
+            if ( $results['db_pa_cor'] !== $results['wc_pa_cor'] || 
+                 $results['db_pa_tamanho'] !== $results['wc_pa_tamanho'] ) {
+                $this->logger->warning( 'final_verification.inconsistency', [
+                    'variation_id' => $child_id,
+                    'pa_cor_mismatch' => $results['db_pa_cor'] !== $results['wc_pa_cor'],
+                    'pa_tamanho_mismatch' => $results['db_pa_tamanho'] !== $results['wc_pa_tamanho'],
+                    'db_cor' => $results['db_pa_cor'],
+                    'wc_cor' => $results['wc_pa_cor'],
+                    'db_tamanho' => $results['db_pa_tamanho'],
+                    'wc_tamanho' => $results['wc_pa_tamanho']
+                ] );
+            }
+        }
+    }
+    
+    /**
+     * Faz backup dos atributos das variações antes do sync do WooCommerce
+     * 
+     * @param array $children IDs das variações
+     * @return array Backup dos atributos
+     */
+    private function backup_variation_attributes( array $children ): array {
+        global $wpdb;
+        
+        $backup = [];
+        
+        foreach ( $children as $child_id ) {
+            // Busca todos os atributos pa_* diretamente do banco
+            $attributes = $wpdb->get_results( $wpdb->prepare(
+                "SELECT meta_key, meta_value FROM {$wpdb->postmeta} 
+                 WHERE post_id = %d AND meta_key LIKE 'attribute_pa_%' AND meta_value != ''",
+                $child_id
+            ), ARRAY_A );
+            
+            if ( ! empty( $attributes ) ) {
+                $backup[ $child_id ] = $attributes;
+                
+                $this->logger->info( 'variation.backup_created', [
+                    'variation_id' => $child_id,
+                    'attributes_count' => count( $attributes ),
+                    'attributes' => $attributes
+                ] );
+            }
+        }
+        
+        $this->logger->info( 'variations.backup_complete', [
+            'total_variations' => count( $children ),
+            'backed_up_variations' => count( $backup )
+        ] );
+        
+        return $backup;
+    }
+    
+    /**
+     * Restaura os atributos das variações após o sync do WooCommerce
+     * 
+     * @param array $backup Backup dos atributos
+     */
+    private function restore_variation_attributes( array $backup ): void {
+        global $wpdb;
+        
+        $restored_count = 0;
+        
+        foreach ( $backup as $variation_id => $attributes ) {
+            foreach ( $attributes as $attr ) {
+                $meta_key = $attr['meta_key'];
+                $meta_value = $attr['meta_value'];
+                
+                // Verifica se o valor ainda existe
+                $current_value = $wpdb->get_var( $wpdb->prepare(
+                    "SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id = %d AND meta_key = %s",
+                    $variation_id,
+                    $meta_key
+                ) );
+                
+                // Se o valor foi perdido ou está vazio, restaura
+                if ( $current_value !== $meta_value || empty( $current_value ) ) {
+                    $wpdb->replace( $wpdb->postmeta, [
+                        'post_id' => $variation_id,
+                        'meta_key' => $meta_key,
+                        'meta_value' => $meta_value
+                    ] );
+                    
+                    $restored_count++;
+                    
+                    $this->logger->info( 'variation.attribute_restored', [
+                        'variation_id' => $variation_id,
+                        'meta_key' => $meta_key,
+                        'restored_value' => $meta_value,
+                        'previous_value' => $current_value
+                    ] );
+                    
+                    // Limpa cache da variação
+                    wp_cache_delete( $variation_id, 'post_meta' );
+                    clean_post_cache( $variation_id );
+                }
+            }
+        }
+        
+        $this->logger->info( 'variations.restore_complete', [
+            'total_attributes_restored' => $restored_count,
+            'variations_processed' => count( $backup )
         ] );
     }
 }

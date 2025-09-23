@@ -88,6 +88,14 @@ class WC_Product {
         $this->attributes = $attributes;
     }
 
+    public function set_id( int $id ): void {
+        $this->id = $id;
+    }
+
+    public function set_name( string $name ): void {
+        // stub implementation
+    }
+
     public function save(): void {
         $this->saved = true;
     }
@@ -154,6 +162,22 @@ class WC_Product_Variation extends WC_Product {
 
     public function get_all_meta(): array {
         return $this->meta;
+    }
+
+    /**
+     * Simula get_variation_attributes do WooCommerce
+     * @param bool $with_prefix
+     * @return array
+     */
+    public function get_variation_attributes( bool $with_prefix = true ): array {
+        $prefix = $with_prefix ? 'attribute_' : '';
+        $variation_attributes = [];
+        
+        foreach ( $this->attributes as $key => $value ) {
+            $variation_attributes[ $prefix . $key ] = $value;
+        }
+        
+        return $variation_attributes;
     }
 }
 
@@ -378,3 +402,58 @@ $test_registered_taxonomies = [ 'pa_cor', 'pa_tamanho' ];
 $test_products              = [];
 $test_object_terms          = [];
 $test_wc_logger             = null;
+$test_posts                 = [];
+
+/**
+ * Função stub para simular wc_get_product_variation_attributes
+ * 
+ * @param int $variation_id
+ * @return array
+ */
+function wc_get_product_variation_attributes( int $variation_id ): array {
+    global $test_products;
+    
+    if ( ! isset( $test_products[ $variation_id ] ) ) {
+        return [];
+    }
+    
+    $variation = $test_products[ $variation_id ];
+    if ( ! $variation instanceof WC_Product_Variation ) {
+        return [];
+    }
+    
+    // Retorna todos os meta dados que começam com 'attribute_'
+    $all_meta = $variation->get_all_meta();
+    $attributes = [];
+    
+    foreach ( $all_meta as $key => $value ) {
+        if ( strpos( $key, 'attribute_' ) === 0 ) {
+            $attributes[ $key ] = $value;
+        }
+    }
+    
+    return $attributes;
+}
+
+/**
+ * Função stub para get_the_title
+ * 
+ * @param int $post_id
+ * @return string
+ */
+function get_the_title( int $post_id ): string {
+    $post = get_post( $post_id );
+    return $post ? $post->post_title : '';
+}
+
+/**
+ * Função stub para get_post
+ * 
+ * @param int $post_id
+ * @return object|null
+ */
+function get_post( int $post_id ) {
+    global $test_posts;
+    
+    return $test_posts[ $post_id ] ?? null;
+}
