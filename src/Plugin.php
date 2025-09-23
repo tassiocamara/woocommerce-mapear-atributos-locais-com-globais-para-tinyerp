@@ -58,7 +58,7 @@ class Plugin {
 
         // Carrega UI apenas no admin.
         if ( is_admin() ) {
-            $this->admin_ui = new UI( $this->plugin_url );
+            $this->admin_ui = new UI( $this->discovery, $this->plugin_url );
             $this->admin_ui->hooks();
             // Settings page (logging toggle)
             $settings = new Settings();
