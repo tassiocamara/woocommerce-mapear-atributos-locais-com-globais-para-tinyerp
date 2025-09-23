@@ -10,18 +10,17 @@
     apiFetch.use(apiFetch.createNonceMiddleware(settings.rest.nonce));
 
     const state = {
-        productId: settings.productId,
         stepIndex: 0,
         attributes: [],
         mapping: [],
-        options: {}, // opções avançadas removidas (modo determinístico)
         dryRun: null,
         dryRunError: null,
-        _dryRunRequested: false,
         log: [],
-    };
-
-    const modal = document.getElementById('local2global-modal');
+        options: {},
+        productId: settings.productId,
+        isCompleted: false, // Flag para indicar se o mapeamento foi aplicado com sucesso
+        _dryRunRequested: false,
+    };    const modal = document.getElementById('local2global-modal');
     const modalBody = modal ? modal.querySelector('.local2global-modal__body') : null;
     const modalTitle = modal ? modal.querySelector('#local2global-modal-title') : null;
     const nextButton = modal ? modal.querySelector('.local2global-next') : null;
@@ -110,21 +109,41 @@
         modalBody.innerHTML = '';
         step.render(modalBody);
 
-        prevButton.disabled = state.stepIndex === 0;
+        prevButton.disabled = state.stepIndex === 0 || state.isCompleted;
         prevButton.textContent = __('← Anterior', 'local2global');
 
         if (state.stepIndex === steps.length - 1) {
             nextButton.textContent = __('Concluir', 'local2global');
         } else if (steps[state.stepIndex].id === 'dry-run') {
-            nextButton.textContent = state.dryRun ? settings.i18n.apply : settings.i18n.dryRun;
+            if (state.isCompleted) {
+                nextButton.textContent = __('Mapeamento já aplicado', 'local2global');
+                nextButton.disabled = true;
+            } else {
+                nextButton.textContent = state.dryRun ? settings.i18n.apply : settings.i18n.dryRun;
+            }
         } else {
             nextButton.textContent = __('Próximo →', 'local2global');
         }
 
-        nextButton.disabled = false;
+        if (!state.isCompleted) {
+            nextButton.disabled = false;
+        }
     }
 
     function renderDiscoverStep(container) {
+        if (state.attributes.length === 0) {
+            const noAttributesMsg = document.createElement('div');
+            noAttributesMsg.className = 'local2global-no-attributes';
+            noAttributesMsg.innerHTML = '<div class="local2global-success-container">' +
+                '<div class="local2global-success-icon">✓</div>' +
+                '<div class="local2global-success-message">' +
+                '<h4>' + __('Produto já processado', 'local2global') + '</h4>' +
+                '<p>' + __('Este produto não possui atributos locais ou já teve seus atributos convertidos para globais anteriormente.', 'local2global') + '</p>' +
+                '</div></div>';
+            container.appendChild(noAttributesMsg);
+            return;
+        }
+        
         const info = document.createElement('div');
         info.innerHTML = '<p>' + __('Encontramos os seguintes atributos locais no produto. Eles serão convertidos em atributos globais para melhor organização.', 'local2global') + '</p>';
         container.appendChild(info);
@@ -429,6 +448,11 @@
         }).then((data) => {
             state.attributes = data.attributes || [];
             state.mapping = state.attributes.map((attr) => buildMappingFromAttribute(attr));
+            
+            // Se não há atributos locais, provavelmente o mapeamento já foi aplicado
+            if (state.attributes.length === 0) {
+                state.isCompleted = true;
+            }
         });
     }
 
@@ -550,6 +574,9 @@
             if (data?.result) {
                 state.log.push(JSON.stringify(data.result, null, 2));
             }
+            
+            // Marcar como concluído para prevenir re-aplicação
+            state.isCompleted = true;
         } catch (error) {
             const formatted = formatApiError(error);
             state.log.push(__('Erro: ', 'local2global') + formatted.message);
@@ -780,6 +807,12 @@
         }
 
         if (current.id === 'dry-run') {
+            if (state.isCompleted) {
+                // Não permitir re-aplicação
+                showNotification(__('O mapeamento já foi aplicado com sucesso. Para aplicar novamente, feche e reabra o modal.', 'local2global'), 'info');
+                return;
+            }
+            
             if (!state.dryRun && !state.dryRunError) {
                 // Caso usuário clique antes do auto disparo concluir, forçar execução.
                 if (!state._dryRunRequested) {
