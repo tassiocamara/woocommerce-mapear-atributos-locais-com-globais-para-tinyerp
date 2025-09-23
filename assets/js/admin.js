@@ -36,12 +36,12 @@
         },
         {
             id: 'select-attribute',
-            title: __('🎯 Configurar Atributos Globais', 'local2global'),
+            title: __('Configurar Atributos Globais', 'local2global'),
             render: renderSelectAttributeStep,
         },
         {
             id: 'term-matrix',
-            title: __('🔗 Mapear Valores para Termos', 'local2global'),
+            title: __('Mapear Valores para Termos', 'local2global'),
             render: renderTermMatrixStep,
         },
         {
@@ -114,7 +114,7 @@
         prevButton.textContent = __('← Anterior', 'local2global');
 
         if (state.stepIndex === steps.length - 1) {
-            nextButton.textContent = __('✓ Concluir', 'local2global');
+            nextButton.textContent = __('Concluir', 'local2global');
         } else if (steps[state.stepIndex].id === 'dry-run') {
             nextButton.textContent = state.dryRun ? settings.i18n.apply : settings.i18n.dryRun;
         } else {
@@ -126,12 +126,12 @@
 
     function renderDiscoverStep(container) {
         const info = document.createElement('div');
-        info.innerHTML = '<p>📋 ' + __('Encontramos os seguintes atributos locais no produto. Eles serão convertidos em atributos globais para melhor organização.', 'local2global') + '</p>';
+        info.innerHTML = '<p>' + __('Encontramos os seguintes atributos locais no produto. Eles serão convertidos em atributos globais para melhor organização.', 'local2global') + '</p>';
         container.appendChild(info);
 
         const table = document.createElement('table');
         table.className = 'local2global-attribute-table';
-        table.innerHTML = '<thead><tr><th>📝 ' + __('Atributo Local', 'local2global') + '</th><th>🏷️ ' + __('Valores Únicos', 'local2global') + '</th><th>⚙️ ' + __('Utilização', 'local2global') + '</th></tr></thead>';
+        table.innerHTML = '<thead><tr><th>' + __('Atributo Local', 'local2global') + '</th><th>' + __('Valores Únicos', 'local2global') + '</th><th>' + __('Utilização', 'local2global') + '</th></tr></thead>';
         const tbody = document.createElement('tbody');
 
         state.attributes.forEach((attr) => {
@@ -149,7 +149,7 @@
 
     function renderSelectAttributeStep(container) {
         const intro = document.createElement('p');
-        intro.textContent = __('🎯 Selecione um atributo global para cada atributo local ou crie novos automaticamente. O sistema já sugeriu correspondências inteligentes.', 'local2global');
+        intro.textContent = __('Selecione um atributo global para cada atributo local ou crie novos automaticamente. O sistema já sugeriu correspondências inteligentes.', 'local2global');
         container.appendChild(intro);
 
         // Seleção automática de atributos globais baseada em similaridade
@@ -218,7 +218,7 @@
 
             const table = document.createElement('table');
             table.className = 'local2global-attribute-table';
-            table.innerHTML = '<thead><tr><th>📝 ' + __('Valor Local', 'local2global') + '</th><th>🏷️ ' + __('Termo Global', 'local2global') + '</th></tr></thead>';
+            table.innerHTML = '<thead><tr><th>' + __('Valor Local', 'local2global') + '</th><th>' + __('Termo Global', 'local2global') + '</th></tr></thead>';
             const tbody = document.createElement('tbody');
 
             map.terms.forEach((term, termIndex) => {
@@ -281,7 +281,7 @@
 
     function renderDryRunStep(container) {
         if (!state.dryRun && !state.dryRunError) {
-            container.innerHTML = '<div class="local2global-loading"><div class="local2global-spinner"></div><span>' + __('🔄 Calculando pré-visualização...', 'local2global') + '</span></div>';
+            container.innerHTML = '<div class="local2global-loading"><div class="local2global-spinner"></div><span>' + __('Calculando pré-visualização...', 'local2global') + '</span></div>';
             // Dispara automaticamente uma única vez ao entrar na etapa.
             if (!state._dryRunRequested) {
                 state._dryRunRequested = true;
@@ -293,11 +293,11 @@
         if (state.dryRunError) {
             const errorBox = document.createElement('div');
             errorBox.className = 'notice notice-error';
-            errorBox.innerHTML = '<p>⚠️ <strong>' + __('Erro na pré-visualização:', 'local2global') + '</strong> ' + escapeHtml(state.dryRunError.message) + '</p>' + (state.dryRunError.details ? '<pre>' + escapeHtml(state.dryRunError.details) + '</pre>' : '');
+            errorBox.innerHTML = '<p><strong>' + __('Erro na pré-visualização:', 'local2global') + '</strong> ' + escapeHtml(state.dryRunError.message) + '</p>' + (state.dryRunError.details ? '<pre>' + escapeHtml(state.dryRunError.details) + '</pre>' : '');
             const retryBtn = document.createElement('button');
             retryBtn.type = 'button';
             retryBtn.className = 'button button-secondary';
-            retryBtn.textContent = '🔄 ' + __('Tentar novamente', 'local2global');
+            retryBtn.textContent = __('Tentar novamente', 'local2global');
             retryBtn.addEventListener('click', () => {
                 state.dryRunError = null;
                 state.dryRun = null;
@@ -334,57 +334,93 @@
     }
 
     function renderApplyStep(container) {
-        const summary = document.createElement('div');
-        summary.innerHTML = '<p>' + __('Acompanhe o progresso. Os logs são atualizados automaticamente.', 'local2global') + '</p>';
-        container.appendChild(summary);
+        // Elemento informativo
+        const info = document.createElement('div');
+        info.className = 'local2global-apply-info';
+        info.innerHTML = '<p>' + __('Aplicando o mapeamento dos atributos...', 'local2global') + '</p>';
+        container.appendChild(info);
 
-        const logContainer = document.createElement('pre');
-        logContainer.className = 'local2global-log';
-        logContainer.textContent = state.log.join('\n');
-        container.appendChild(logContainer);
+        // Barra de progresso
+        const progressContainer = document.createElement('div');
+        progressContainer.className = 'local2global-progress-container';
+        
+        const progressBar = document.createElement('div');
+        progressBar.className = 'local2global-progress-bar';
+        
+        const progressFill = document.createElement('div');
+        progressFill.className = 'local2global-progress-fill';
+        progressFill.style.width = '0%';
+        
+        progressBar.appendChild(progressFill);
+        progressContainer.appendChild(progressBar);
+        
+        const progressText = document.createElement('div');
+        progressText.className = 'local2global-progress-text';
+        progressText.textContent = '0%';
+        progressContainer.appendChild(progressText);
+        
+        container.appendChild(progressContainer);
 
-        // Se o último log contém JSON de resultado, tentar parse para extrair resumo de variações.
-        const lastJson = (() => {
-            for (let i = state.log.length - 1; i >= 0; i--) {
-                const line = state.log[i];
-                if (line && line.startsWith('{') && line.endsWith('}')) {
-                    try { return JSON.parse(line); } catch (e) { /* ignore */ }
-                }
+        // Container para mensagem de sucesso (inicialmente oculto)
+        const successContainer = document.createElement('div');
+        successContainer.className = 'local2global-success-container';
+        successContainer.style.display = 'none';
+        
+        const successIcon = document.createElement('div');
+        successIcon.className = 'local2global-success-icon';
+        successIcon.innerHTML = '✓';
+        
+        const successMessage = document.createElement('div');
+        successMessage.className = 'local2global-success-message';
+        successMessage.innerHTML = '<h4>' + __('Mapeamento aplicado com sucesso!', 'local2global') + '</h4>' +
+            '<p>' + __('Os atributos foram convertidos para atributos globais.', 'local2global') + '</p>';
+        
+        successContainer.appendChild(successIcon);
+        successContainer.appendChild(successMessage);
+        container.appendChild(successContainer);
+
+        // Simular progresso baseado nos logs
+        const updateProgress = () => {
+            const totalSteps = Math.max(1, state.mapping.length);
+            const completedSteps = Math.min(state.log.length, totalSteps);
+            const percentage = Math.round((completedSteps / totalSteps) * 100);
+            
+            progressFill.style.width = percentage + '%';
+            progressText.textContent = percentage + '%';
+            
+            // Verificar se terminou (presença de JSON de resultado nos logs)
+            const hasResult = state.log.some(line => 
+                line && line.startsWith('{') && line.includes('variations')
+            );
+            
+            if (hasResult || percentage >= 100) {
+                progressFill.style.width = '100%';
+                progressText.textContent = '100%';
+                info.innerHTML = '<p>' + __('Processamento concluído!', 'local2global') + '</p>';
+                
+                setTimeout(() => {
+                    progressContainer.style.display = 'none';
+                    successContainer.style.display = 'flex';
+                }, 500);
             }
-            return null;
-        })();
+        };
 
-        if (lastJson && lastJson.variations) {
-            const table = document.createElement('table');
-            table.className = 'local2global-variation-summary';
-            table.innerHTML = '<thead><tr>' +
-                '<th>' + __('Taxonomia', 'local2global') + '</th>' +
-                '<th>' + __('Atualizadas', 'local2global') + '</th>' +
-                '<th>' + __('Ignoradas', 'local2global') + '</th>' +
-                '<th>' + __('Total', 'local2global') + '</th>' +
-                '<th>%</th>' +
-                '<th>' + __('Razões', 'local2global') + '</th>' +
-                '</tr></thead>';
-            const tbody = document.createElement('tbody');
-            Object.keys(lastJson.variations).forEach((tax) => {
-                const stats = lastJson.variations[tax] || {};
-                const tr = document.createElement('tr');
-                const pct = typeof stats.updated_pct === 'number' ? stats.updated_pct : (stats.total_variations ? (stats.updated / stats.total_variations * 100).toFixed(2) : '0');
-                const reasons = stats.reasons ? Object.entries(stats.reasons).filter(([,v]) => v>0).map(([k,v]) => k + ':' + v).join(', ') : '';
-                tr.innerHTML = '<td>' + tax + '</td>' +
-                    '<td>' + (stats.updated || 0) + '</td>' +
-                    '<td>' + (stats.skipped || 0) + '</td>' +
-                    '<td>' + (stats.total_variations || 0) + '</td>' +
-                    '<td>' + pct + '</td>' +
-                    '<td>' + reasons + '</td>';
-                tbody.appendChild(tr);
-            });
-            table.appendChild(tbody);
-            const header = document.createElement('h3');
-            header.textContent = __('Resumo de variações', 'local2global');
-            container.appendChild(header);
-            container.appendChild(table);
-        }
+        // Atualizar progresso imediatamente e a cada mudança nos logs
+        updateProgress();
+        
+        // Observer para mudanças nos logs
+        let lastLogLength = state.log.length;
+        const logObserver = setInterval(() => {
+            if (state.log.length !== lastLogLength) {
+                lastLogLength = state.log.length;
+                updateProgress();
+            }
+        }, 500);
+        
+        // Limpar observer quando o modal for fechado
+        container.addEventListener('modalClosed', () => {
+            clearInterval(logObserver);
+        });
     }
 
     function discoverAttributes() {
@@ -738,7 +774,7 @@
             if (hasInvalidMapping) {
                 // Highlight invalid fields and show modern notification
                 highlightInvalidFields();
-                showNotification('⚠️ ' + __('Selecione um atributo global para cada atributo local', 'local2global'), 'warning');
+                showNotification(__('Selecione um atributo global para cada atributo local', 'local2global'), 'warning');
                 return;
             }
         }
