@@ -27,10 +27,19 @@ class UI {
             \Evolury\Local2Global\VERSION
         );
 
+        // Register Vue.js from CDN
+        wp_register_script(
+            'vue-js',
+            'https://unpkg.com/vue@3/dist/vue.global.js',
+            [],
+            '3.3.4',
+            true
+        );
+
         wp_register_script(
             'local2global-admin',
             $this->plugin_url . 'assets/js/admin.js',
-            [ 'wp-api-fetch', 'wp-i18n' ],
+            [ 'wp-api-fetch', 'wp-i18n', 'vue-js' ],
             \Evolury\Local2Global\VERSION,
             true
         );
@@ -58,7 +67,7 @@ class UI {
                     'nonce' => wp_create_nonce( 'wp_rest' ),
                 ],
                 'i18n'       => [
-                    'title'            => __( 'Mapear atributos locais → globais', 'local2global' ),
+                    'title'            => __( 'Mapear Atributos', 'local2global' ),
                     'discover'         => __( 'Descobrir atributos locais', 'local2global' ),
                     'dryRun'           => __( 'Dry-run', 'local2global' ),
                     'apply'            => __( 'Aplicar', 'local2global' ),
@@ -92,7 +101,7 @@ class UI {
             return;
         }
 
-        echo '<div class="local2global-button-wrap"><button type="button" class="button local2global-open">' . esc_html__( 'Mapear atributos locais → globais', 'local2global' ) . '</button></div>';
+        echo '<div class="local2global-button-wrap"><button type="button" class="button local2global-open">' . esc_html__( 'Mapear Atributos', 'local2global' ) . '</button></div>';
     }
 
     public function render_modal(): void {
@@ -106,13 +115,21 @@ class UI {
             <div class="local2global-modal__overlay" data-local2global-close></div>
             <div class="local2global-modal__content" role="document">
                 <header class="local2global-modal__header">
-                    <h1 id="local2global-modal-title"></h1>
+                    <h3 id="local2global-modal-title"></h3>
                     <button type="button" class="local2global-modal__close" aria-label="<?php esc_attr_e( 'Fechar', 'local2global' ); ?>" data-local2global-close>&times;</button>
                 </header>
+                <div class="local2global-modal__progress">
+                    <ol class="local2global-progress">
+                        <li data-step="1"><?php esc_html_e( 'Descobrir', 'local2global' ); ?></li>
+                        <li data-step="2"><?php esc_html_e( 'Configurar', 'local2global' ); ?></li>
+                        <li data-step="3"><?php esc_html_e( 'Mapear', 'local2global' ); ?></li>
+                        <li data-step="4"><?php esc_html_e( 'Finalizar', 'local2global' ); ?></li>
+                    </ol>
+                </div>
                 <main class="local2global-modal__body" tabindex="0"></main>
                 <footer class="local2global-modal__footer">
-                    <button type="button" class="button button-secondary local2global-prev" disabled><?php esc_html_e( 'Voltar', 'local2global' ); ?></button>
-                    <button type="button" class="button button-primary local2global-next"><?php esc_html_e( 'Continuar', 'local2global' ); ?></button>
+                    <button type="button" class="button button-secondary local2global-prev" disabled><?php esc_html_e( 'Anterior', 'local2global' ); ?></button>
+                    <button type="button" class="button button-primary local2global-next"><?php esc_html_e( 'Próximo', 'local2global' ); ?></button>
                 </footer>
             </div>
         </div>

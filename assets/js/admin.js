@@ -26,6 +26,7 @@
     const modalTitle = modal ? modal.querySelector('#local2global-modal-title') : null;
     const nextButton = modal ? modal.querySelector('.local2global-next') : null;
     const prevButton = modal ? modal.querySelector('.local2global-prev') : null;
+    const progressSteps = modal ? modal.querySelectorAll('.local2global-progress li') : null;
 
     const steps = [
         {
@@ -35,12 +36,12 @@
         },
         {
             id: 'select-attribute',
-            title: __('Selecionar atributos globais', 'local2global'),
+            title: __('🎯 Configurar Atributos Globais', 'local2global'),
             render: renderSelectAttributeStep,
         },
         {
             id: 'term-matrix',
-            title: __('Matriz de mapeamento de termos', 'local2global'),
+            title: __('🔗 Mapear Valores para Termos', 'local2global'),
             render: renderTermMatrixStep,
         },
         {
@@ -99,18 +100,25 @@
         const step = steps[state.stepIndex];
         modalTitle.textContent = step.title;
 
+        // Update progress indicator
+        if (progressSteps) {
+            progressSteps.forEach((stepEl, index) => {
+                stepEl.classList.toggle('active', index <= state.stepIndex);
+            });
+        }
+
         modalBody.innerHTML = '';
         step.render(modalBody);
 
         prevButton.disabled = state.stepIndex === 0;
-        prevButton.textContent = __('Voltar', 'local2global');
+        prevButton.textContent = __('← Anterior', 'local2global');
 
         if (state.stepIndex === steps.length - 1) {
-            nextButton.textContent = __('Fechar', 'local2global');
+            nextButton.textContent = __('✓ Concluir', 'local2global');
         } else if (steps[state.stepIndex].id === 'dry-run') {
             nextButton.textContent = state.dryRun ? settings.i18n.apply : settings.i18n.dryRun;
         } else {
-            nextButton.textContent = __('Continuar', 'local2global');
+            nextButton.textContent = __('Próximo →', 'local2global');
         }
 
         nextButton.disabled = false;
@@ -118,12 +126,12 @@
 
     function renderDiscoverStep(container) {
         const info = document.createElement('div');
-        info.innerHTML = '<p>' + __('Abaixo estão os atributos locais detectados no produto.', 'local2global') + '</p>';
+        info.innerHTML = '<p>📋 ' + __('Encontramos os seguintes atributos locais no produto. Eles serão convertidos em atributos globais para melhor organização.', 'local2global') + '</p>';
         container.appendChild(info);
 
         const table = document.createElement('table');
         table.className = 'local2global-attribute-table';
-        table.innerHTML = '<thead><tr><th>' + __('Atributo local', 'local2global') + '</th><th>' + __('Valores', 'local2global') + '</th><th>' + __('Uso', 'local2global') + '</th></tr></thead>';
+        table.innerHTML = '<thead><tr><th>📝 ' + __('Atributo Local', 'local2global') + '</th><th>🏷️ ' + __('Valores Únicos', 'local2global') + '</th><th>⚙️ ' + __('Utilização', 'local2global') + '</th></tr></thead>';
         const tbody = document.createElement('tbody');
 
         state.attributes.forEach((attr) => {
@@ -141,7 +149,7 @@
 
     function renderSelectAttributeStep(container) {
         const intro = document.createElement('p');
-        intro.textContent = __('Associe cada atributo local a um atributo global existente ou escolha criar automaticamente. Slug e rótulo serão derivados do nome local.', 'local2global');
+        intro.textContent = __('🎯 Selecione um atributo global para cada atributo local ou crie novos automaticamente. O sistema já sugeriu correspondências inteligentes.', 'local2global');
         container.appendChild(intro);
 
         // Seleção automática de atributos globais baseada em similaridade
@@ -158,7 +166,7 @@
             const select = document.createElement('select');
             select.dataset.index = index;
             select.className = 'local2global-attr-select';
-            select.innerHTML = '<option value="">' + __('— Selecionar atributo global —', 'local2global') + '</option>';
+            select.innerHTML = '<option value="">✨ ' + __('Selecionar atributo global', 'local2global') + '</option>';
             settings.attributes.forEach((attr) => {
                 const option = document.createElement('option');
                 option.value = attr.slug;
@@ -170,7 +178,7 @@
             });
             const createOption = document.createElement('option');
             createOption.value = '__create_new__';
-            createOption.textContent = __('Criar novo atributo', 'local2global');
+            createOption.textContent = '➕ ' + __('Criar novo atributo', 'local2global');
             if (map.create_attribute) {
                 createOption.selected = true;
             }
@@ -201,7 +209,7 @@
 
     function renderTermMatrixStep(container) {
         const intro = document.createElement('p');
-        intro.textContent = __('Associe cada valor local a um termo global existente ou selecione criar novo. O nome e slug do termo criado serão derivados do valor local.', 'local2global');
+        intro.textContent = __('🔗 Configure como cada valor local será associado aos termos globais. O sistema sugeriu correspondências automáticas baseadas em similaridade.', 'local2global');
         container.appendChild(intro);
 
         state.mapping.forEach((map, mapIndex) => {
@@ -210,7 +218,7 @@
 
             const table = document.createElement('table');
             table.className = 'local2global-attribute-table';
-            table.innerHTML = '<thead><tr><th>' + __('Valor local', 'local2global') + '</th><th>' + __('Termo global', 'local2global') + '</th></tr></thead>';
+            table.innerHTML = '<thead><tr><th>📝 ' + __('Valor Local', 'local2global') + '</th><th>🏷️ ' + __('Termo Global', 'local2global') + '</th></tr></thead>';
             const tbody = document.createElement('tbody');
 
             map.terms.forEach((term, termIndex) => {
@@ -224,7 +232,7 @@
                 select.className = 'local2global-term-select';
                 select.dataset.attrIndex = mapIndex;
                 select.dataset.termIndex = termIndex;
-                select.innerHTML = '<option value="">' + __('— Selecionar termo —', 'local2global') + '</option>';
+                select.innerHTML = '<option value="">✨ ' + __('Selecionar termo', 'local2global') + '</option>';
 
                 ensureTermOptions(map).forEach((termOption) => {
                     const option = document.createElement('option');
@@ -240,7 +248,7 @@
                 const createValue = '__create__';
                 const createOption = document.createElement('option');
                 createOption.value = createValue;
-                createOption.textContent = __('Criar novo termo', 'local2global') + ' (' + term.local_value + ')';
+                createOption.textContent = '➕ ' + __('Criar novo termo', 'local2global') + ' (' + term.local_value + ')';
                 if (term.create) {
                     createOption.selected = true;
                 }
@@ -273,7 +281,7 @@
 
     function renderDryRunStep(container) {
         if (!state.dryRun && !state.dryRunError) {
-            container.innerHTML = '<p>' + __('Calculando pré-visualização…', 'local2global') + '</p>';
+            container.innerHTML = '<div class="local2global-loading"><div class="local2global-spinner"></div><span>' + __('🔄 Calculando pré-visualização...', 'local2global') + '</span></div>';
             // Dispara automaticamente uma única vez ao entrar na etapa.
             if (!state._dryRunRequested) {
                 state._dryRunRequested = true;
@@ -285,11 +293,11 @@
         if (state.dryRunError) {
             const errorBox = document.createElement('div');
             errorBox.className = 'notice notice-error';
-            errorBox.innerHTML = '<p><strong>' + __('Falha ao calcular pré-visualização:', 'local2global') + '</strong> ' + escapeHtml(state.dryRunError.message) + '</p>' + (state.dryRunError.details ? '<pre>' + escapeHtml(state.dryRunError.details) + '</pre>' : '');
+            errorBox.innerHTML = '<p>⚠️ <strong>' + __('Erro na pré-visualização:', 'local2global') + '</strong> ' + escapeHtml(state.dryRunError.message) + '</p>' + (state.dryRunError.details ? '<pre>' + escapeHtml(state.dryRunError.details) + '</pre>' : '');
             const retryBtn = document.createElement('button');
             retryBtn.type = 'button';
-            retryBtn.className = 'button';
-            retryBtn.textContent = __('Tentar novamente', 'local2global');
+            retryBtn.className = 'button button-secondary';
+            retryBtn.textContent = '🔄 ' + __('Tentar novamente', 'local2global');
             retryBtn.addEventListener('click', () => {
                 state.dryRunError = null;
                 state.dryRun = null;
@@ -728,7 +736,9 @@
         if (current.id === 'select-attribute') {
             const hasInvalidMapping = state.mapping.some(map => !map.target_tax || map.target_tax === '');
             if (hasInvalidMapping) {
-                alert(__('Por favor, selecione um atributo global para todos os atributos locais ou escolha criar novos atributos.', 'local2global'));
+                // Highlight invalid fields and show modern notification
+                highlightInvalidFields();
+                showNotification('⚠️ ' + __('Selecione um atributo global para cada atributo local', 'local2global'), 'warning');
                 return;
             }
         }
@@ -761,4 +771,52 @@
         state.stepIndex += 1;
         renderStep();
     });
+
+    // Helper functions for modern UX
+    function showNotification(message, type = 'info') {
+        // Remove existing notifications
+        const existing = document.querySelector('.local2global-notification');
+        if (existing) {
+            existing.remove();
+        }
+
+        const notification = document.createElement('div');
+        notification.className = `local2global-notification local2global-notification--${type}`;
+        notification.innerHTML = message;
+        
+        // Insert at top of modal body
+        const modalBody = document.querySelector('.local2global-modal__body');
+        if (modalBody) {
+            modalBody.insertBefore(notification, modalBody.firstChild);
+            
+            // Auto remove after 5 seconds
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.remove();
+                }
+            }, 5000);
+        }
+    }
+
+    function highlightInvalidFields() {
+        // Remove existing highlights
+        document.querySelectorAll('.local2global-field-error').forEach(el => {
+            el.classList.remove('local2global-field-error');
+        });
+
+        // Highlight invalid selects
+        state.mapping.forEach((map, index) => {
+            if (!map.target_tax || map.target_tax === '') {
+                const select = document.querySelector(`[data-local-attr="${map.local_attr}"] select`);
+                if (select) {
+                    select.classList.add('local2global-field-error');
+                    // Add shake animation
+                    select.style.animation = 'shake 0.5s ease-in-out';
+                    setTimeout(() => {
+                        select.style.animation = '';
+                    }, 500);
+                }
+            }
+        });
+    }
 })(window.wp, window.Local2GlobalSettings);
