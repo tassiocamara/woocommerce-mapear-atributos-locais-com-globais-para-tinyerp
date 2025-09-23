@@ -345,10 +345,10 @@ class Mapping_Service {
 
                     $this->logger->info( 'attributes.snapshot.after', $this->describe_attributes( $product->get_attributes() ) );
 
-                    // Sync removido: WC_Product_Variable::sync($product, true) sobrescreve as variações
-                    // O WooCommerce fará o sync automaticamente quando necessário
+                    // Sync seletivo: atualiza estrutura sem sobrescrever metadados das variações
                     if ( $product->is_type( 'variable' ) ) {
-                        $this->logger->info( 'apply.sync_skipped', [ 'reason' => 'preserve_variation_mappings' ] );
+                        $this->selective_variation_sync( $product );
+                        $this->logger->info( 'apply.sync_selective', [ 'reason' => 'preserve_variation_mappings_but_update_structure' ] );
                     }
 
                     wc_delete_product_transients( $product_id );
@@ -644,5 +644,52 @@ class Mapping_Service {
             }
         }
         return $out;
+    }
+
+    /**
+     * Sincronização seletiva que preserva metadados das variações.
+     * Atualiza apenas a estrutura necessária para o WooCommerce reconhecer as variações.
+     */
+    private function selective_variation_sync( WC_Product $product ): void {
+        if ( ! $product->is_type( 'variable' ) ) {
+            return;
+        }
+
+        // Força atualização dos atributos do produto
+        $product->save();
+        
+        // Limpa caches específicos das variações para forçar reconstrução
+        $children = $product->get_children();
+        foreach ( $children as $child_id ) {
+            if ( function_exists( 'wp_cache_delete' ) ) {
+                wp_cache_delete( $child_id, 'posts' );
+                wp_cache_delete( $child_id, 'post_meta' );
+            }
+            if ( function_exists( 'clean_post_cache' ) ) {
+                clean_post_cache( $child_id );
+            }
+        }
+        
+        // Limpa caches do produto principal
+        if ( function_exists( 'wp_cache_delete' ) ) {
+            wp_cache_delete( $product->get_id(), 'posts' );
+            wp_cache_delete( $product->get_id(), 'post_meta' );
+        }
+        if ( function_exists( 'clean_post_cache' ) ) {
+            clean_post_cache( $product->get_id() );
+        }
+        
+        // Força atualização dos transients do WooCommerce
+        wc_delete_product_transients( $product->get_id() );
+        
+        // Atualiza lookup tables se função disponível
+        if ( function_exists( 'wc_update_product_lookup_tables' ) ) {
+            wc_update_product_lookup_tables( $product->get_id() );
+        }
+        
+        $this->logger->info( 'sync.selective_completed', [ 
+            'product_id' => $product->get_id(),
+            'variations_count' => count( $children )
+        ] );
     }
 }

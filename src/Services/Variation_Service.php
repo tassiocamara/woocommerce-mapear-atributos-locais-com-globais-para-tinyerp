@@ -71,6 +71,16 @@ class Variation_Service {
             $variation->update_meta_data( $target_key, $slug_map[ $normalized ] );
             $variation->delete_meta_data( $local_key );
             $variation->save();
+            
+            // Força limpeza de cache para atualização imediata na interface
+            if ( function_exists( 'wp_cache_delete' ) ) {
+                wp_cache_delete( $variation_id, 'posts' );
+                wp_cache_delete( $variation_id, 'post_meta' );
+            }
+            if ( function_exists( 'clean_post_cache' ) ) {
+                clean_post_cache( $variation_id );
+            }
+            
             $updated++;
         }
 
