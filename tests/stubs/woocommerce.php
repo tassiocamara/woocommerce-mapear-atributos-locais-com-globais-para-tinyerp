@@ -164,7 +164,6 @@ class WC_Product_Attribute {
     private int $position = 0;
     private bool $visible = false;
     private bool $variation = false;
-    private bool $is_taxonomy = false;
 
     public function set_id( int $id ): void {
         $this->id = $id;
@@ -214,12 +213,13 @@ class WC_Product_Attribute {
         return $this->variation;
     }
 
-    public function set_taxonomy( bool $value ): void {
-        $this->is_taxonomy = $value;
+    // WooCommerce determina se é taxonomy baseado no nome (prefixo 'pa_') e ID > 0
+    public function is_taxonomy(): bool {
+        return strpos($this->name, 'pa_') === 0 && $this->id > 0;
     }
 
-    public function get_taxonomy(): bool {
-        return $this->is_taxonomy;
+    public function get_taxonomy(): string {
+        return $this->is_taxonomy() ? $this->name : '';
     }
 }
 
@@ -344,6 +344,34 @@ function register_test_product( WC_Product $product ): void {
     global $test_products;
 
     $test_products[ $product->get_id() ] = $product;
+}
+
+function wc_get_attribute_taxonomies(): array {
+    return [
+        (object) ['attribute_name' => 'cor', 'attribute_label' => 'Cor'],
+        (object) ['attribute_name' => 'tamanho', 'attribute_label' => 'Tamanho'],
+    ];
+}
+
+function get_terms( array $args ): array {
+    $taxonomy = $args['taxonomy'] ?? '';
+    
+    if ( $taxonomy === 'pa_cor' ) {
+        return [
+            (object) ['term_id' => 52, 'name' => 'Multicolorido', 'slug' => 'multicolorido'],
+        ];
+    }
+    
+    if ( $taxonomy === 'pa_tamanho' ) {
+        return [
+            (object) ['term_id' => 53, 'name' => '8', 'slug' => '8'],
+            (object) ['term_id' => 54, 'name' => '2', 'slug' => '2'],
+            (object) ['term_id' => 55, 'name' => '4', 'slug' => '4'],
+            (object) ['term_id' => 56, 'name' => '6', 'slug' => '6'],
+        ];
+    }
+    
+    return [];
 }
 
 $test_registered_taxonomies = [ 'pa_cor', 'pa_tamanho' ];

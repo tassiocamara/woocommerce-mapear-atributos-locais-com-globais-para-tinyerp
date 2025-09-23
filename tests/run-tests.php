@@ -178,7 +178,7 @@ final class TestRunner {
         $replaced = $attributes['pa_cor'];
         $this->assertSame( 'pa_cor', $replaced->get_name(), 'Attribute name should be taxonomy' );
         $this->assertSame( [ 11, 12 ], $replaced->get_options(), 'Attribute options must be term ids' );
-        $this->assertTrue( $replaced->get_taxonomy(), 'Attribute must be taxonomy' );
+        $this->assertTrue( $replaced->is_taxonomy(), 'Attribute must be taxonomy' );
         $this->assertTrue( $replaced->get_visible(), 'Visibility should be preserved' );
         $this->assertTrue( $replaced->get_variation(), 'Variation flag should be preserved' );
     }
