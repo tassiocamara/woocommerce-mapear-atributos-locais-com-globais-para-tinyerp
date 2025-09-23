@@ -22,14 +22,14 @@ class Variation_Service {
      * @param array<string, string> $slug_map slug normalizado => slug final
      * @return array{updated:int, skipped:int, reasons:array<string,int>}
      */
-    public function update_variations( WC_Product $product, string $taxonomy, string $local_name, array $slug_map, ?string $corr_id = null, bool $hydrate = false, bool $aggressive = false ): array {
+    public function update_variations( WC_Product $product, string $taxonomy, string $local_name, array $slug_map, ?string $corr_id = null ): array {
         if ( ! $product->is_type( 'variable' ) ) {
             return [ 'updated' => 0, 'skipped' => 0, 'reasons' => [] ];
         }
 
     $updated     = 0;
     $skipped     = 0;
-    $reasons     = [ 'missing_source_meta' => 0, 'no_slug_match' => 0, 'already_ok' => 0, 'hydrated' => 0, 'inferred' => 0, 'ambiguous_inference' => 0 ];
+    $reasons     = [ 'missing_source_meta' => 0, 'no_slug_match' => 0, 'already_ok' => 0 ];
         $local_key   = 'attribute_' . sanitize_title( $local_name );
         $target_key  = 'attribute_' . $taxonomy;
     $variations  = $product->get_children();
@@ -51,80 +51,10 @@ class Variation_Service {
                 continue;
             }
 
-            if ( '' === $current_value ) {
-                if ( $hydrate ) {
-                    $maybe = $current_target;
-                    if ( '' === $maybe ) {
-                        $maybe_attr = (string) $variation->get_meta( $local_key );
-                        if ( '' !== $maybe_attr ) {
-                            $maybe = $maybe_attr;
-                        } else {
-                            $post = get_post( $variation->get_id() );
-                            if ( $post ) { $maybe = $post->post_title; }
-                        }
-                    }
-                    $norm_maybe = Value_Normalizer::normalize( $maybe );
-                    if ( isset( $slug_map[ $norm_maybe ] ) ) {
-                        $variation->update_meta_data( $target_key, $slug_map[ $norm_maybe ] );
-                        $variation->save();
-                        $updated++;
-                        $reasons['hydrated']++;
-                        continue;
-                    }
-                    if ( 1 === count( $slug_map ) ) { // single-term fallback
-                        $only = reset( $slug_map );
-                        $variation->update_meta_data( $target_key, $only );
-                        $variation->save();
-                        $updated++;
-                        $reasons['hydrated']++;
-                        continue;
-                    }
-                    // Aggressive multi-term inferência
-                    if ( $aggressive && count( $slug_map ) > 1 ) {
-                        $candidates = $this->infer_candidates( $variation, $slug_map, $local_key, $target_key );
-                        if ( 1 === count( $candidates ) ) {
-                            $slug = reset( $candidates );
-                            $variation->update_meta_data( $target_key, $slug );
-                            $variation->save();
-                            $updated++;
-                            $reasons['inferred']++;
-                            continue;
-                        } elseif ( count( $candidates ) > 1 ) {
-                            $reasons['ambiguous_inference']++;
-                        }
-                    }
-                }
-                $skipped++;
-                $reasons['missing_source_meta']++;
-                continue;
-            }
+            if ( '' === $current_value ) { $skipped++; $reasons['missing_source_meta']++; continue; }
 
             $normalized = Value_Normalizer::normalize( $current_value );
             if ( ! isset( $slug_map[ $normalized ] ) ) {
-                // Heurística: se há somente um slug possível, assume aquele.
-                if ( 1 === count( $slug_map ) ) {
-                    $only = reset( $slug_map );
-                    $variation->update_meta_data( $target_key, $only );
-                    $variation->delete_meta_data( $local_key );
-                    $variation->save();
-                    $updated++;
-                    $reasons['hydrated']++; // Reaproveita razão hydrated para indicar inferência.
-                    continue;
-                }
-                if ( $hydrate && $aggressive && count( $slug_map ) > 1 ) {
-                    $candidates = $this->infer_candidates( $variation, $slug_map, $local_key, $target_key );
-                    if ( 1 === count( $candidates ) ) {
-                        $slug = reset( $candidates );
-                        $variation->update_meta_data( $target_key, $slug );
-                        $variation->delete_meta_data( $local_key );
-                        $variation->save();
-                        $updated++;
-                        $reasons['inferred']++;
-                        continue;
-                    } elseif ( count( $candidates ) > 1 ) {
-                        $reasons['ambiguous_inference']++;
-                    }
-                }
                 $this->logger->warning( 'variation.slug_map_missing', [ 'variation_id' => $variation_id, 'raw_value' => $current_value, 'normalized' => $normalized ] );
                 $skipped++;
                 $reasons['no_slug_match']++;
@@ -158,8 +88,6 @@ class Variation_Service {
             'total_variations' => $total,
             'updated_pct' => $updated_pct,
             'reasons'    => $reasons,
-            'hydrate_mode' => $hydrate,
-            'aggressive_mode' => $aggressive,
         ];
 
         if ( $corr_id ) {

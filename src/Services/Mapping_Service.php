@@ -17,8 +17,6 @@ class Mapping_Service {
     public function __construct(
         private Term_Service $terms,
         private Variation_Service $variations,
-        private Templates_Service $templates,
-        private Rollback_Service $rollback,
         private Logger $logger
     ) {}
 
@@ -26,6 +24,17 @@ class Mapping_Service {
         return $this->logger->scoped(
             $this->build_context( $product_id, $corr_id, 'dry_run' ),
             function () use ( $product_id, $mapping, $options, $corr_id ) {
+                // Depreciação: opções e campos legacy ignorados >=0.3.0
+                $deprecated_opt_keys = array_intersect( array_keys( (array) $options ), [ 'auto_create_terms', 'update_variations', 'create_backup', 'hydrate_variations', 'aggressive_hydrate_variations', 'save_template' ] );
+                $deprecated_mapping  = [];
+                foreach ( $mapping as $m ) {
+                    if ( isset( $m['save_template'] ) || isset( $m['term_name'] ) ) {
+                        $deprecated_mapping[] = [ 'save_template' => isset( $m['save_template'] ), 'term_name' => isset( $m['term_name'] ) ];
+                    }
+                }
+                if ( $deprecated_opt_keys || $deprecated_mapping ) {
+                    $this->logger->warning( 'dry_run.deprecated_fields', [ 'options' => array_values( $deprecated_opt_keys ), 'mapping_flags' => $deprecated_mapping ] );
+                }
                 $product = wc_get_product( $product_id );
                 if ( ! $product instanceof WC_Product ) {
                     $this->logger->warning( 'dry_run.invalid_product', [ 'product_id' => $product_id ] );
@@ -62,7 +71,12 @@ class Mapping_Service {
                     foreach ( $attribute_mapping['terms'] ?? [] as $term_map ) {
                         $local_value = (string) ( $term_map['local_value'] ?? '' );
                         $slug        = sanitize_title( $term_map['term_slug'] ?? $term_map['term_name'] ?? $local_value );
-                        $term        = $attribute_exists ? term_exists( $slug, $target_tax ) : null;
+                        $term = null;
+                        if ( $attribute_exists ) {
+                            if ( function_exists( 'term_exists' ) ) {
+                                $term = \term_exists( $slug, $target_tax );
+                            }
+                        }
 
                         if ( $term ) {
                             $term_actions['existing'][] = $local_value;
@@ -96,6 +110,17 @@ class Mapping_Service {
         return $this->logger->scoped(
             $this->build_context( $product_id, $corr_id, 'apply' ),
             function () use ( $product_id, $mapping, $options, $corr_id ) {
+                // Depreciação: opções e campos legacy ignorados >=0.3.0
+                $deprecated_opt_keys = array_intersect( array_keys( (array) $options ), [ 'auto_create_terms', 'update_variations', 'create_backup', 'hydrate_variations', 'aggressive_hydrate_variations', 'save_template' ] );
+                $deprecated_mapping  = [];
+                foreach ( $mapping as $m ) {
+                    if ( isset( $m['save_template'] ) || isset( $m['term_name'] ) ) {
+                        $deprecated_mapping[] = [ 'save_template' => isset( $m['save_template'] ), 'term_name' => isset( $m['term_name'] ) ];
+                    }
+                }
+                if ( $deprecated_opt_keys || $deprecated_mapping ) {
+                    $this->logger->warning( 'apply.deprecated_fields', [ 'options' => array_values( $deprecated_opt_keys ), 'mapping_flags' => $deprecated_mapping ] );
+                }
                 $product = wc_get_product( $product_id );
                 if ( ! $product instanceof WC_Product ) {
                     $this->logger->warning( 'apply.invalid_product', [ 'product_id' => $product_id ] );
@@ -103,22 +128,13 @@ class Mapping_Service {
                     return $this->error( 'l2g_invalid_product', __( 'Produto inválido.', 'local2global' ), 400, $corr_id, [ 'product_id' => $product_id ] );
                 }
 
-                $options           = $this->normalize_options( $options );
                 $attributes_before = $product->get_attributes();
 
                 $this->logger->info( 'apply.start', [ 'attributes' => count( $mapping ) ] );
-                $this->logger->info( 'apply.options', $options );
+                // Opções removidas na 0.3.0 (comportamento determinístico)
                 $this->logger->info( 'attributes.snapshot.before', $this->describe_attributes( $attributes_before ) );
 
-                if ( ! empty( $options['create_backup'] ) ) {
-                    try {
-                        $this->rollback->create_backup( $product, $attributes_before );
-                    } catch ( Throwable $throwable ) {
-                        $this->logger->error( 'apply.backup_failed', [ 'exception' => $throwable ] );
-
-                        return $this->error( 'l2g_backup_failed', __( 'Não foi possível criar o backup do produto antes da aplicação.', 'local2global' ), 500, $corr_id );
-                    }
-                }
+                // Backup descontinuado
 
                 $results = [
                     'created_terms' => [],
@@ -129,7 +145,7 @@ class Mapping_Service {
 
                 $term_assignments  = [];
                 $variation_jobs    = [];
-                $template_jobs     = [];
+                $template_jobs     = [];// templates removidos
 
                 foreach ( $mapping as $index => $attribute_mapping ) {
                     $local_name   = trim( (string) ( $attribute_mapping['local_attr'] ?? '' ) );
@@ -205,7 +221,7 @@ class Mapping_Service {
                             }
 
                             try {
-                                $term_results = $this->terms->ensure_terms( $attribute_info['taxonomy'], $terms_config, ! empty( $options['auto_create_terms'] ) );
+                                $term_results = $this->terms->ensure_terms( $attribute_info['taxonomy'], $terms_config );
                             } catch ( RuntimeException $exception ) {
                                 $this->logger->warning( 'apply.term_failure', [ 'exception' => $exception ] );
 
@@ -255,27 +271,15 @@ class Mapping_Service {
                             $results['existing_terms'][ $attribute_info['taxonomy'] ] = $existing;
                             $results['updated_attrs'][]                               = $attribute_info['taxonomy'];
 
-                            if ( ! empty( $options['update_variations'] ) ) {
-                                $variation_jobs[] = [
-                                    'taxonomy'   => $attribute_info['taxonomy'],
-                                    'local_name' => $local_name,
-                                    'slug_map'   => $slug_map,
-                                ];
-                                $this->logger->info( 'attribute.slug_map', [ 'taxonomy' => $attribute_info['taxonomy'], 'slug_map' => $slug_map ] );
-                            }
+                            // Sempre atualizar variações
+                            $variation_jobs[] = [
+                                'taxonomy'   => $attribute_info['taxonomy'],
+                                'local_name' => $local_name,
+                                'slug_map'   => $slug_map,
+                            ];
+                            $this->logger->info( 'attribute.slug_map', [ 'taxonomy' => $attribute_info['taxonomy'], 'slug_map' => $slug_map ] );
 
-                            if ( ! empty( $attribute_mapping['save_template'] ) ) {
-                                $template_jobs[] = [
-                                    'label' => $local_label,
-                                    'data'  => [
-                                        'target_tax' => $attribute_info['taxonomy'],
-                                        'terms'      => array_combine(
-                                            array_map( static fn( array $item ) => $item['local_value'], $term_results ),
-                                            array_map( static fn( array $item ) => $item['slug'], $term_results )
-                                        ),
-                                    ],
-                                ];
-                            }
+                            // save_template removido
 
                             $this->logger->info( 'attribute.process.end', [ 'taxonomy' => $attribute_info['taxonomy'] ] );
                             return null;
@@ -304,9 +308,7 @@ class Mapping_Service {
                         return $this->error( 'l2g_term_assignment', implode( '; ', $assignment_errors ), 500, $corr_id );
                     }
 
-                    foreach ( $template_jobs as $template ) {
-                        $this->templates->save_template( $template['label'], $template['data'] );
-                    }
+                    // templates removidos
 
                     foreach ( $variation_jobs as $job ) {
                         $variation_stats = $this->variations->update_variations(
@@ -315,8 +317,8 @@ class Mapping_Service {
                             $job['local_name'],
                             $job['slug_map'],
                             $corr_id,
-                            ! empty( $options['hydrate_variations'] ),
-                            ! empty( $options['aggressive_hydrate_variations'] )
+                            false,
+                            false
                         );
                         $results['variations'][ $job['taxonomy'] ] = $variation_stats;
                     }
@@ -413,39 +415,7 @@ class Mapping_Service {
 
     private function normalize_local_value( string $value ): string { return Value_Normalizer::normalize( $value ); }
 
-    private function normalize_options( array $options ): array {
-        // Defaults globais (settings). Falls back to explicit request overrides.
-        $get = function( string $key, string $default = 'no' ) {
-            if ( function_exists( 'get_option' ) ) {
-                return call_user_func( 'get_option', $key, $default );
-            }
-            return $default; // ambiente de análise / testes stub
-        };
-        $global = [
-            'auto_create_terms'             => $get( 'local2global_auto_create_terms', 'no' ) === 'yes',
-            'update_variations'             => $get( 'local2global_update_variations', 'no' ) === 'yes',
-            'create_backup'                 => $get( 'local2global_create_backup', 'no' ) === 'yes',
-            'hydrate_variations'            => $get( 'local2global_hydrate_variations', 'no' ) === 'yes',
-            'aggressive_hydrate_variations' => $get( 'local2global_aggressive_hydrate_variations', 'no' ) === 'yes',
-            'save_template_default'         => $get( 'local2global_save_template_default', 'no' ) === 'yes',
-        ];
-
-        $normalized = [
-            'auto_create_terms'             => array_key_exists( 'auto_create_terms', $options ) ? ! empty( $options['auto_create_terms'] ) : $global['auto_create_terms'],
-            'update_variations'             => array_key_exists( 'update_variations', $options ) ? ! empty( $options['update_variations'] ) : $global['update_variations'],
-            'create_backup'                 => array_key_exists( 'create_backup', $options ) ? ! empty( $options['create_backup'] ) : $global['create_backup'],
-            'aggressive_hydrate_variations' => array_key_exists( 'aggressive_hydrate_variations', $options ) ? ! empty( $options['aggressive_hydrate_variations'] ) : $global['aggressive_hydrate_variations'],
-        ];
-        if ( array_key_exists( 'hydrate_variations', $options ) ) {
-            $normalized['hydrate_variations'] = ! empty( $options['hydrate_variations'] );
-        } else {
-            $normalized['hydrate_variations'] = $global['hydrate_variations'] ?? $normalized['update_variations'];
-        }
-        if ( $global['save_template_default'] ) {
-            $normalized['save_template_default'] = true;
-        }
-        return $normalized;
-    }
+    // normalize_options removido
 
     private function build_context( int $product_id, ?string $corr_id, string $operation ): array {
         $context = [
@@ -544,26 +514,24 @@ class Mapping_Service {
         if ( '' === $taxonomy ) {
             return $taxonomy;
         }
-
         if ( ! str_starts_with( $taxonomy, 'pa_' ) ) {
-            $taxonomy = 'pa_' . $taxonomy;
+            $taxonomy = 'pa_' . substr( $taxonomy, 0, 25 );
         }
-
         return $taxonomy;
     }
 
     /**
-     * Reprocessa apenas variações para as taxonomias já aplicadas no produto.
-     * Gera slug_map a partir dos termos atribuídos vs nomes dos termos.
+     * Reprocessa apenas as variações (remapeando metas) para taxonomias globais já atribuídas ao produto.
+     * Determinístico: não hidrata nem infere valores; apenas normaliza e aplica quando há correspondência.
      *
      * @param int $product_id
-     * @param string[]|null $only_taxonomies Lista opcional de taxonomias pa_ a limitar.
-     * @return array{product_id:int, taxonomies: array<string, array{updated:int, skipped:int}>}|WP_Error
+     * @param string[]|null $only_taxonomies Lista opcional de taxonomias (pa_*) a limitar.
+     * @return array|WP_Error
      */
-    public function update_variations_only( int $product_id, ?array $only_taxonomies = null, ?string $corr_id = null, bool $hydrate = false, bool $aggressive = false ): array|WP_Error {
+    public function update_variations_only( int $product_id, ?array $only_taxonomies = null, ?string $corr_id = null ): array|WP_Error {
         return $this->logger->scoped(
             $this->build_context( $product_id, $corr_id, 'variations_resync' ),
-            function () use ( $product_id, $only_taxonomies, $corr_id, $hydrate, $aggressive ) {
+            function () use ( $product_id, $only_taxonomies, $corr_id ) {
                 $product = wc_get_product( $product_id );
                 if ( ! $product instanceof WC_Product ) {
                     return $this->error( 'l2g_invalid_product', __( 'Produto inválido.', 'local2global' ), 400, $corr_id );
@@ -603,11 +571,11 @@ class Mapping_Service {
                     }
                     // Tenta descobrir nome local original para montar a chave de meta. Se não encontrar, usa tax sem prefixo.
                     $local_guess = preg_replace( '/^pa_/', '', $tax );
-                    $stats = $this->variations->update_variations( $product, $tax, $local_guess, $slug_map, $corr_id, $hydrate, $aggressive );
+                    $stats = $this->variations->update_variations( $product, $tax, $local_guess, $slug_map, $corr_id );
                     $results[ $tax ] = $stats;
                 }
-                // Agrega razões
-                $aggregate = [ 'updated' => 0, 'skipped' => 0, 'total_variations' => 0, 'updated_pct' => 0.0, 'reasons' => [ 'missing_source_meta' => 0, 'no_slug_match' => 0, 'already_ok' => 0, 'hydrated' => 0, 'inferred' => 0, 'ambiguous_inference' => 0 ] ];
+                // Agrega razões (somente razões suportadas no modo determinístico)
+                $aggregate = [ 'updated' => 0, 'skipped' => 0, 'total_variations' => 0, 'updated_pct' => 0.0, 'reasons' => [ 'missing_source_meta' => 0, 'no_slug_match' => 0, 'already_ok' => 0 ] ];
                 foreach ( $results as $tax => $stats ) {
                     $aggregate['updated'] += (int) ( $stats['updated'] ?? 0 );
                     $aggregate['skipped'] += (int) ( $stats['skipped'] ?? 0 );

@@ -18,11 +18,9 @@ use Evolury\Local2Global\Utils\Logger;
 
 class Plugin {
     private Logger $logger;
-    private Templates_Service $templates;
     private Discovery_Service $discovery;
     private Term_Service $terms;
     private Variation_Service $variations;
-    private Rollback_Service $rollback;
     private Mapping_Service $mapping;
     private Rest_Controller $rest;
 
@@ -51,16 +49,12 @@ class Plugin {
 
     public function init(): void {
         $this->logger     = new Logger();
-        $this->templates  = new Templates_Service( $this->logger );
-        $this->discovery  = new Discovery_Service( $this->templates );
+        $this->discovery  = new Discovery_Service();
         $this->terms      = new Term_Service( $this->logger );
         $this->variations = new Variation_Service( $this->logger );
-        $this->rollback   = new Rollback_Service( $this->logger );
         $this->mapping    = new Mapping_Service(
             $this->terms,
             $this->variations,
-            $this->templates,
-            $this->rollback,
             $this->logger
         );
 

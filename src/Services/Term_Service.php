@@ -96,10 +96,10 @@ class Term_Service {
     }
 
     /**
-     * @param array<int, array{local_value:string, term_id?:int, term_slug?:string, term_name?:string, create?:bool}> $terms
+     * @param array<int, array{local_value:string, term_id?:int, term_slug?:string, create?:bool}> $terms
      * @return array<int, array{local_value:string, term_id:int, slug:string, created:bool}>
      */
-    public function ensure_terms( string $taxonomy, array $terms, bool $allow_creation ): array {
+    public function ensure_terms( string $taxonomy, array $terms ): array {
         $taxonomy = sanitize_key( $taxonomy );
         if ( ! \taxonomy_exists( $taxonomy ) ) {
             throw new RuntimeException( sprintf( 'Taxonomia %s não registrada.', $taxonomy ) );
@@ -112,7 +112,7 @@ class Term_Service {
 
     foreach ( $terms as $term_config ) {
             $local_value = $term_config['local_value'];
-            $slug        = sanitize_title( $term_config['term_slug'] ?? $term_config['term_name'] ?? $local_value );
+        $slug        = sanitize_title( $term_config['term_slug'] ?: $local_value );
             $existing    = $this->get_cached_term( $taxonomy, $slug );
 
             $created = false;
@@ -141,14 +141,8 @@ class Term_Service {
                 }
             }
 
-            if ( ! $existing ) {
-                $should_create = ! empty( $term_config['create'] ) || $allow_creation;
-                if ( ! $should_create ) {
-                    throw new RuntimeException( sprintf( 'Termo "%s" não existe na taxonomia %s.', $local_value, $taxonomy ) );
-                }
-
-                $term_name = $term_config['term_name'] ?? $local_value;
-                $result    = \wp_insert_term( $term_name, $taxonomy, [ 'slug' => $slug ] );
+            if ( ! $existing && ! empty( $term_config['create'] ) ) {
+                $result = \wp_insert_term( $local_value, $taxonomy, [ 'slug' => $slug ] );
 
                 if ( is_wp_error( $result ) ) {
                     // Se já existe, converte em reuse silencioso
@@ -178,6 +172,10 @@ class Term_Service {
                     $created  = true;
                     $this->logger->info( 'term.created', [ 'taxonomy' => $taxonomy, 'slug' => $slug, 'term_id' => (int) $result['term_id'] ] );
                 }
+            }
+
+            if ( ! $existing && empty( $term_config['create'] ) ) {
+                throw new RuntimeException( sprintf( 'Termo "%s" não existe na taxonomia %s e criação não foi selecionada.', $local_value, $taxonomy ) );
             }
 
             $this->set_cached_term( $taxonomy, $existing['slug'], $existing );

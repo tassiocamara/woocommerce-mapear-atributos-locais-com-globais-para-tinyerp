@@ -1,15 +1,21 @@
 # Local 2 Global Attribute Mapper
 
-Plugin do WooCommerce desenvolvido pela Evolury LTDA para mapear atributos locais de produtos para atributos globais (`pa_*`).
+Plugin do WooCommerce para converter atributos locais em atributos globais (`pa_*`) e atualizar variações automaticamente. A partir da versão 0.3.0 o plugin foi simplificado removendo opções e heurísticas complexas, priorizando previsibilidade e manutenção reduzida.
 
-## Principais recursos
+## Principais recursos (>= 0.3.0)
 
-- Descoberta automática de atributos locais no produto.
-- Mapeamento assistido para atributos globais existentes ou criação de novos atributos/termos.
-- Pré-visualização (dry-run) com identificação do que será criado/atualizado.
-- Conversão das variações com preservação de estoque/SKU/preço.
-- Criação de templates reutilizáveis para aplicar em produtos futuros.
-- Suporte a CLI (`wp local2global map`) e endpoint REST (`/local2global/v1/map`).
+- Descoberta automática de atributos locais.
+- Mapeamento assistido para taxonomias globais existentes (ou criação explícita de termos via select).
+- Pré-visualização (dry-run) clara do que será criado.
+- Atualização determinística das variações (sempre executada).
+- Logs estruturados opcionais.
+- Suporte a CLI e REST (campos legacy geram aviso e são ignorados).
+
+### Removidos na 0.3.0 (Breaking):
+- Templates reutilizáveis.
+- Opções globais (auto_create_terms, update_variations, create_backup, hydrate/aggressive, save_template_default).
+- Backup/rollback interno.
+- Modo de hidratação e inferência agressiva.
 
 ## Instalação
 
@@ -56,26 +62,11 @@ update_option( 'local2global_logging_enabled', 'yes' ); // Religa
 
 Observação: Erros internos críticos do WooCommerce podem continuar sendo registrados pelo core, mesmo com os logs do plugin desativados.
 
-### Configurações Globais de Comportamento
+### Campos / Opções Depreciadas (>= 0.3.0)
 
-Todas as opções operacionais principais podem ser definidas globalmente em:
+Os seguintes campos/options são ignorados e geram log de aviso quando fornecidos: `auto_create_terms`, `update_variations`, `create_backup`, `hydrate_variations`, `aggressive_hydrate_variations`, `save_template`, `save_template_default`, `term_name`.
 
-`Configurações > Local2Global`
-
-Opções disponíveis (armazenadas como `yes|no`):
-- `auto_create_terms` – Cria automaticamente termos ainda inexistentes quando marcados como "create" ou quando o mapeamento não especifica explicitamente.
-- `update_variations` – Ativa o processamento das variações após mapear os atributos no produto principal.
-- `create_backup` – Gera snapshot (antes/depois) das metas de atributos para rollback ou auditoria.
-- `hydrate_variations` – Habilita modo de hidratação (recupera metadados ausentes das variações).
-- `aggressive_hydrate_variations` – Expande hidratação com heurísticas (título/SKU/padrões numéricos) e evita falsos positivos (candidatos múltiplos => ambíguo).
-- `save_template_default` – Se ativo, salva por padrão um template reutilizável ao final do mapeamento, a menos que explicitamente desativado em um fluxo custom.
-
-Precedência (mais forte → mais fraco):
-1. Parâmetro explícito da requisição REST / flags CLI / UI do assistente.
-2. Valor global salvo em `Configurações > Local2Global`.
-3. Fallback interno (false) quando nem requisição nem global habilitam.
-
-Isso significa que você pode omitir `options` nas chamadas REST/CLI para usar os defaults globais, reduzindo verbosidade e garantindo consistência operacional.
+Remova-os de integrações REST/CLI antigas; não há substitutos pois o comportamento passou a ser único.
 
 Exemplo REST usando apenas defaults globais (sem bloco `options`):
 ```bash
@@ -263,7 +254,7 @@ Campos principais:
 - `updated`: Quantidade de variações ajustadas.
 - `skipped`: Variações ignoradas (ver reasons).
 - `total_variations`: Total de variações examinadas para aquela taxonomia.
-- `hydrate_mode` (boolean em variation.update.summary): Indica se o modo de hidratação estava ativo.
+- `hydrate_mode`: Campo legado mantido apenas para backward compatibility (sempre false na 0.3.0).
 
 Razões (`reasons`):
 - `missing_source_meta`: Não havia meta de origem; se `hydrate_mode=true`, plugin pode tentar inferir a partir de slug já aplicado ou título da variação.
@@ -273,38 +264,10 @@ Razões (`reasons`):
 
 `variation.resync.summary` agrega contagens somando `updated`, `skipped`, `total_variations` e razões de todas as taxonomias processadas.
 
-### Modo de Hidratação de Variações (`hydrate_variations`)
+### Funcionalidades Removidas
 
-Quando ativado (via `options.hydrate_variations` no endpoint `/map`, parâmetro `hydrate_variations` em `/variations/update`, ou flags CLI `--hydrate-variations=1` / `--hydrate=1`), o serviço tenta recuperar variações que perderam a meta local original:
-1. Usa valor já existente em `attribute_pa_*` (se presente) para mapear novamente.
+Os modos de hidratação e inferência agressiva foram removidos. Razões como `hydrated`, `inferred`, `ambiguous_inference` podem aparecer apenas em logs históricos ou ambientes que ainda possuam meta antiga — não são mais produzidas ativamente.
 2. Caso vago, tenta extrair possível valor do título (`post_title`) da variação.
+
 3. Normaliza e compara com o `slug_map` ativo; em caso de sucesso aplica a meta target e incrementa `hydrated`.
-
-Isso reduz `missing_source_meta` após rodadas de limpeza onde a meta local foi removida antes da migração completa.
-
-### Modo de Inferência Agressiva (`aggressive_hydrate_variations`)
-
-Quando habilitado junto ao `hydrate_variations`, o plugin tenta inferir o termo correto mesmo quando há múltiplos termos possíveis (multi-termos) analisando:
-
-1. Título da variação (`post_title`): correspondência de palavra inteira (normalizada) com nomes originais dos termos.
-2. SKU (`_sku`): presença de fragmentos normalizados que batam com termos.
-3. Padrões numéricos simples (ex: `180/90`, `42`, `44`) presentes no título/SKU que correspondam a termos numéricos.
-
-Regras de decisão:
-- Se exatamente 1 candidato é encontrado: atribui e contabiliza em `inferred`.
-- Se mais de 1 candidato é encontrado: não aplica (para evitar erro) e contabiliza em `ambiguous_inference`.
-- Se nenhum candidato: permanece como `missing_source_meta`.
-
-Novas razões adicionadas em `reasons`:
-- `inferred`: termo aplicado via inferência agressiva multi-termos.
-- `ambiguous_inference`: múltiplos candidatos conflitantes; nenhuma atribuição feita.
-
-Como habilitar:
-- Endpoint `/map`: incluir em `options` `{ "aggressive_hydrate_variations": true }` (requer também `update_variations` e preferencialmente `hydrate_variations`).
-- Endpoint `/variations/update`: enviar `aggressive_hydrate_variations=1` no corpo JSON.
-- WP-CLI `map`: `--aggressive-hydrate-variations=1`.
-- WP-CLI `variations-update`: `--aggressive=1`.
-
-Observação: a inferência agressiva só roda quando há mais de um termo possível no `slug_map`; para caso de termo único a lógica básica já cobre.
-
 
