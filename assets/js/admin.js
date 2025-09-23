@@ -433,6 +433,7 @@
         nextButton.disabled = true;
         state.dryRun = null;
         state.dryRunError = null;
+        prepareTermsForDryRun();
         return apiFetch({
             path: '/local2global/v1/map',
             method: 'POST',
@@ -451,6 +452,19 @@
         }).finally(() => {
             nextButton.disabled = false;
             renderStep();
+        });
+    }
+
+    function prepareTermsForDryRun() {
+        state.mapping.forEach((map) => {
+            // Se o usuário pulou a matriz, map.terms pode não ter sido tocado e termOptions pode estar vazia.
+            map.terms.forEach((t) => {
+                const noSelection = !t.term_slug || t.term_slug === '';
+                if (noSelection) {
+                    t.create = true;
+                    t.term_slug = ''; // backend gera
+                }
+            });
         });
     }
 
