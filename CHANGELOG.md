@@ -1,24 +1,54 @@
 # Changelog
 
 ## 0.3.0 (2025-09-22)
-### Breaking / Removidos
-- Removidos Templates reutilizáveis, backup/rollback, opções globais (`auto_create_terms`, `update_variations`, `create_backup`, `hydrate_variations`, `aggressive_hydrate_variations`, `save_template_default`).
-- Removidos campos/flags `term_name`, `save_template`, `hydrate_variations`, `aggressive_hydrate_variations` de REST/CLI (agora ignorados com log de depreciação).
-- Removida lógica de hidratação e inferência agressiva de variações.
 
-### Alterações Principais
-- Comportamento determinístico: sempre atualiza variações após aplicar o mapeamento.
-- Criação de termos agora somente quando usuário marca explicitamente “Criar novo termo” no select (UI) ou informa `--term valor:slug` (CLI).
-- Única configuração restante: habilitar/desabilitar logs (`local2global_logging_enabled`).
-- REST e CLI registram eventos `apply.deprecated_fields`, `dry_run.deprecated_fields`, `variation.resync.deprecated_flags` quando recebem campos antigos.
-- Código interno simplificado (remoção de services: `Templates_Service`, `Rollback_Service`).
+### 🔥 BREAKING CHANGES
+- **Removido completamente**: Templates reutilizáveis, backup/rollback, inferência agressiva, opções globais
+- **Removidos serviços**: `Templates_Service`, `Rollback_Service` 
+- **Removidas opções REST/CLI**: `auto_create_terms`, `update_variations`, `create_backup`, `hydrate_variations`, `aggressive_hydrate_variations`, `save_template_default`, `term_name`, `save_template`
+- **Comportamento**: Plugin agora sempre atualiza variações automaticamente (sem configuração)
 
-### Logs
-- Novos eventos de depreciação para rastrear integrações não atualizadas.
-- Removido log `apply.options` (não há mais normalização condicional de opções).
+### ✨ NOVAS FUNCIONALIDADES
+- **UI Simplificada**: Matriz de termos agora com seleção inline "Criar novo termo" em vez de campos manuais
+- **Auto-mapeamento**: Sugestões automáticas de termos baseadas em similaridade (Levenshtein)
+- **Visibilidade condicional**: Botão "Mapear atributos" só aparece quando produto tem atributos locais
+- **Dry-run automático**: Pré-visualização executa automaticamente ao entrar na etapa
+- **Recuperação de erros**: Interface com retry automático em caso de falhas na pré-visualização
 
-### Docs
-- README reescrito refletindo fluxo simplificado e lista de recursos removidos.
+### 🛠 MELHORIAS TÉCNICAS
+- **Comportamento determinístico**: Sempre processa variações, remove dependência de flags comportamentais
+- **Logging granular**: Novos eventos `dry_run.attribute.start/end`, `dry_run.term.existing/create/missing`, `apply.attribute.summary`
+- **Consistência dry-run/apply**: Mesmo método `get_term_by()` para verificação de existência de termos
+- **Correlação de logs**: IDs únicos para rastrear operações relacionadas
+- **Discovery Service**: Detecção inteligente de atributos locais (não-taxonômicos)
+
+### 🐛 CORREÇÕES CRÍTICAS
+- **Dry-run travado**: Resolvido problema de UI ficando em "Calculando pré-visualização…"
+- **Falsos erros**: Corrigido dry-run mostrando termos "missing" que existiam
+- **Auto-trigger**: Pré-visualização dispara automaticamente sem clique manual
+- **Preparação de termos**: Termos não selecionados automaticamente marcados para criação
+
+### 🗑 REMOVIDO (Depreciação)
+- Templates reutilizáveis e sistema de backup
+- Opções de comportamento configuráveis  
+- Hidratação e inferência agressiva de variações
+- Campos manuais para nome/slug de termos na UI
+- Configurações globais (exceto logging)
+
+### 📝 LOGS DE DEPRECIAÇÃO
+- REST/CLI registram `apply.deprecated_fields`, `dry_run.deprecated_fields` quando recebem campos antigos
+- Campos depreciados são ignorados silenciosamente com log para diagnóstico
+
+### 🎯 CONFIGURAÇÃO
+- **Única opção restante**: `local2global_logging_enabled` (habilita/desabilita logs)
+- **Remoção**: Página de configurações complexa substituída por toggle simples
+
+### 📚 DOCUMENTAÇÃO
+- README completamente reescrito para refletir simplificação
+- CHANGELOG detalhado com breaking changes
+- Documentação de APIs atualizadas
+
+---
 
 ## 0.2.1
 - Feat: Configurações globais persistentes para opções de mapeamento: `auto_create_terms`, `update_variations`, `create_backup`, `hydrate_variations`, `aggressive_hydrate_variations`, `save_template_default`.
@@ -42,3 +72,11 @@
 ## 0.1.1
 - Added: HPOS compatibility declaration.
 - Improved: REST and admin UI now expose root-cause errors with correlation IDs, structured logging, payload validation and status codes.
+
+## 0.1.0
+- Initial release
+- Core functionality for mapping local attributes to global taxonomies
+- WooCommerce integration with product attribute management
+- REST API endpoints for automated mapping
+- CLI commands for bulk operations
+- Basic logging and error handling

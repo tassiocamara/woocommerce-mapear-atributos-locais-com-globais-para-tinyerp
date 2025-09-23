@@ -7,6 +7,7 @@ require __DIR__ . '/../src/Services/Mapping_Service.php';
 require __DIR__ . '/../src/Services/Variation_Service.php';
 require __DIR__ . '/../src/Services/Term_Service.php';
 require __DIR__ . '/../src/Utils/Logger.php';
+require __DIR__ . '/../src/Utils/Value_Normalizer.php';
 
 use Evolury\Local2Global\Services\Mapping_Service;
 use Evolury\Local2Global\Services\Term_Service;
@@ -110,11 +111,14 @@ final class TestRunner {
     }
 
     private function createMappingService(): Mapping_Service {
-        $reflection = new ReflectionClass( Mapping_Service::class );
-        /** @var Mapping_Service $service */
-        $service    = $reflection->newInstanceWithoutConstructor();
+        global $test_wc_logger;
+        $test_wc_logger = null;
 
-        return $service;
+        $logger     = new Logger();
+        $terms      = new StubTermService( $logger );
+        $variations = new FailingVariationService( $logger );
+        
+        return new Mapping_Service( $terms, $variations, $logger );
     }
 
     private function createMappingServiceWithDependencies(): array {

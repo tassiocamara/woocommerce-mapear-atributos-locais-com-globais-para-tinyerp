@@ -1,273 +1,236 @@
 # Local 2 Global Attribute Mapper
 
-Plugin do WooCommerce para converter atributos locais em atributos globais (`pa_*`) e atualizar variações automaticamente. A partir da versão 0.3.0 o plugin foi simplificado removendo opções e heurísticas complexas, priorizando previsibilidade e manutenção reduzida.
+Plugin do WooCommerce para converter atributos locais em atributos globais (taxonomias `pa_*`) com atualizações automáticas de variações. **Versão 0.3.0** - simplificada com comportamento determinístico e UX melhorada.
 
-## Principais recursos (>= 0.3.0)
+## ✨ Principais funcionalidades
 
-- Descoberta automática de atributos locais.
-- Mapeamento assistido para taxonomias globais existentes (ou criação explícita de termos via select).
-- Pré-visualização (dry-run) clara do que será criado.
-- Atualização determinística das variações (sempre executada).
-- Logs estruturados opcionais.
-- Suporte a CLI e REST (campos legacy geram aviso e são ignorados).
+- 🔍 **Descoberta automática** de atributos locais não-taxonômicos
+- 🎯 **Mapeamento assistido** para taxonomias globais (existentes ou novas)
+- 👀 **Pré-visualização automática** do que será criado/atualizado
+- ⚡ **Auto-mapeamento inteligente** com sugestões baseadas em similaridade
+- 🔄 **Atualização determinística** de variações (sempre executada)
+- 📊 **Logs estruturados** com correlação de operações
+- 🎛️ **APIs REST e CLI** para automação
+- 📱 **Interface responsiva** com recuperação de erros
 
-### Removidos na 0.3.0 (Breaking):
-- Templates reutilizáveis.
-- Opções globais (auto_create_terms, update_variations, create_backup, hydrate/aggressive, save_template_default).
-- Backup/rollback interno.
-- Modo de hidratação e inferência agressiva.
+## 🚀 Novidades da versão 0.3.0
 
-## Instalação
+### ✅ Melhorias da UX
+- **Visibilidade condicional**: Botão aparece apenas quando necessário
+- **Seleção inline**: "Criar novo termo" direto no select, sem campos manuais
+- **Dry-run automático**: Pré-visualização executa automaticamente
+- **Recuperação de erros**: Interface com retry em caso de falhas
 
-1. Copie a pasta do plugin para `wp-content/plugins/local2global-attribute-mapper`.
-2. Ative em **Plugins** > **Local 2 Global Attribute Mapper**.
+### 🏗️ Simplificação arquitetural
+- **Comportamento determinístico**: Sempre atualiza variações
+- **Remoção de complexidade**: Sem templates, backups ou flags comportamentais
+- **Única configuração**: Toggle de logging
 
-## Uso básico
+### 🔧 Melhorias técnicas
+- **Auto-mapeamento**: Sugestões baseadas em algoritmo Levenshtein
+- **Logging granular**: Eventos detalhados para debug
+- **Correlação**: IDs únicos para rastrear operações relacionadas
+- **Consistência**: Mesma lógica entre dry-run e apply
 
-1. Abra um produto no painel do WooCommerce.
-2. Na aba **Atributos**, clique em **Mapear atributos locais → globais**.
-3. Siga o assistente para escolher o atributo global e realizar o mapeamento dos valores.
-4. Revise a pré-visualização e aplique.
+## 📋 Requisitos
 
-## Linha de comando
+- **WordPress**: 6.4+
+- **WooCommerce**: 8.6+ 
+- **PHP**: 8.1+
 
+## 🛠️ Instalação
+
+1. Faça upload da pasta do plugin para `wp-content/plugins/`
+2. Ative em **Plugins** > **Local 2 Global Attribute Mapper**
+3. Configure se necessário em **Configurações** > **Local2Global**
+
+## 🎮 Uso básico
+
+### Interface Admin
+
+1. Edite um produto no WooCommerce
+2. Na aba **Atributos**, clique em **"Mapear atributos locais → globais"**
+   - ⚠️ O botão só aparece se houver atributos locais
+3. Siga o assistente de 5 etapas:
+   - **Descoberta**: Visualize atributos locais detectados
+   - **Seleção**: Escolha taxonomia global (existente ou nova)
+   - **Mapeamento**: Associe valores a termos (com auto-sugestões)
+   - **Pré-visualização**: Revise o que será criado/atualizado
+   - **Aplicação**: Execute e acompanhe o progresso
+
+### CLI
+
+```bash
+# Mapeamento básico
+wp local2global map --product=123 --attr="Cor:pa_cor" --term="Azul:azul"
+
+# Dry-run (pré-visualização)
+wp local2global map --product=123 --attr="Cor:pa_cor" --term="Azul:azul" --dry-run
+
+# Resync de variações específico
+wp local2global variations resync --product=123 --taxonomy=pa_cor
 ```
-wp local2global map --product=123 --attr="Cor:pa_cor" --term="Azul:azul" --create-missing=1 --apply-variations=1
+
+### REST API
+
+```bash
+# Descobrir atributos locais
+GET /wp-json/local2global/v1/discover?product_id=123
+
+# Dry-run
+POST /wp-json/local2global/v1/map
+{
+  "product_id": 123,
+  "mode": "dry-run", 
+  "mapping": [{
+    "local_attr": "Cor",
+    "target_tax": "pa_cor",
+    "create_attribute": false,
+    "terms": [{"local_value": "Azul", "term_slug": "azul", "create": false}]
+  }]
+}
+
+# Aplicar
+POST /wp-json/local2global/v1/map
+{
+  "product_id": 123,
+  "mode": "apply",
+  "mapping": [...]
+}
 ```
 
-## Requisitos
+## 🔧 Configuração
 
-- WordPress 6.4+
-- WooCommerce 8.6+
-- PHP 8.1+
+### Único toggle disponível
 
-## Debug & Teste
+**Configurações** > **Local2Global** > **Ativar logs**
 
-### Configuração de Logs
+- ✅ **Habilitado**: Logs detalhados em debug.log
+- ❌ **Desabilitado**: Apenas logs de erro críticos
 
-Você pode ativar/desativar os logs do plugin em:
+### Constantes WordPress
 
-`Configurações > Local2Global > Ativar logs`
-
-Implementação:
-- Option: `local2global_logging_enabled` (`yes`|`no`, default `yes`)
-- Checkbox envia sempre um hidden `no` + `yes` quando marcado, garantindo persistência correta.
-- Logger atualiza dinamicamente a flag em runtime via hook `update_option_local2global_logging_enabled`.
-
-Para forçar via código (ex.: mu-plugin):
 ```php
-update_option( 'local2global_logging_enabled', 'no' ); // Desliga
-update_option( 'local2global_logging_enabled', 'yes' ); // Religa
+// Forçar logs (sobrescreve configuração)
+define('L2G_DEBUG', true);
 ```
 
-Observação: Erros internos críticos do WooCommerce podem continuar sendo registrados pelo core, mesmo com os logs do plugin desativados.
+## 📝 Estrutura de logs
 
-### Campos / Opções Depreciadas (>= 0.3.0)
+### Eventos principais
 
-Os seguintes campos/options são ignorados e geram log de aviso quando fornecidos: `auto_create_terms`, `update_variations`, `create_backup`, `hydrate_variations`, `aggressive_hydrate_variations`, `save_template`, `save_template_default`, `term_name`.
-
-Remova-os de integrações REST/CLI antigas; não há substitutos pois o comportamento passou a ser único.
-
-Exemplo REST usando apenas defaults globais (sem bloco `options`):
-```bash
-curl -s -X POST "https://seusite.test/wp-json/local2global/v1/map" \
-	-H "Content-Type: application/json" \
-	-H "Cookie: (sessao admin)" \
-	-d '{
-		"product_id": 123,
-		"mode": "apply",
-		"mapping": [
-			{
-				"local_attr": "Cor",
-				"local_label": "Cor",
-				"target_tax": "pa_cor",
-				"create_attribute": true,
-				"terms": [
-					{ "local_value": "Azul", "term_slug": "azul", "create": true },
-					{ "local_value": "Vermelho", "term_slug": "vermelho", "create": true }
-				]
-			}
-		]
-	}'
+```
+discover.start / discover.end - Descoberta de atributos
+dry_run.start / dry_run.end - Pré-visualização
+apply.start / apply.end - Aplicação
 ```
 
-Exemplo CLI (omitindo flags para confiar nos defaults):
-```bash
-wp local2global map --product=123 \
-	--attr="Cor:pa_cor" \
-	--term="Azul:azul" --term="Vermelho:vermelho"
+### Eventos granulares
+
+```
+dry_run.attribute.start - Início processamento atributo
+dry_run.term.existing - Termo já existe  
+dry_run.term.create - Termo será criado
+dry_run.term.missing - Termo obrigatório não existe
+apply.attribute.summary - Resumo por atributo aplicado
 ```
 
-Se precisar contrariar o default global apenas em um caso específico, forneça a flag/option explicitamente (ex.: `--backup=0` ou `"create_backup": false`).
+### Correlação
 
-Bloco de ajuda na página de configurações inclui orientação resumida de quando ativar cada opção:
-- Ative `hydrate_variations` quando houve limpeza prévia de meta local e você quer reconstruir referências.
-- Ative `aggressive_hydrate_variations` apenas quando existir multi-termo e perda alta de meta; mantenha desligado para cenários simples (minimiza ruído de inferência ambígua).
-- `create_backup` recomendado antes de grandes lotes, pode ser desligado para execuções repetitivas de rotina (ganho marginal de performance).
-- `save_template_default` útil em ciclo de padronização inicial; desligue depois de estabilizar os conjuntos de atributos.
+Todos os logs incluem `corr_id` para rastrear operações relacionadas:
 
-### Endpoints REST
-
-Descoberta de atributos locais de um produto:
-
-```bash
-curl -s -H "Accept: application/json" -H "Cookie: $(wp user session-token 1 2>/dev/null || echo 'USE_SESSAO_ADMIN')" \
-	"https://seusite.test/wp-json/local2global/v1/discover?product_id=123" | jq .
+```
+[2025-09-22 10:30:15] apply.start {"corr_id": "abc123", "product_id": 456}
+[2025-09-22 10:30:16] apply.attribute.summary {"corr_id": "abc123", "taxonomy": "pa_cor"}  
+[2025-09-22 10:30:17] apply.end {"corr_id": "abc123", "success": true}
 ```
 
-Aplicação do mapeamento (exemplo com um atributo):
+## 🗑️ Breaking Changes (0.3.0)
 
-```bash
-curl -s -X POST "https://seusite.test/wp-json/local2global/v1/map" \
-	-H "Content-Type: application/json" \
-	-H "Cookie: (sessao admin)" \
-	-d '{
-		"product_id": 123,
-		"mode": "apply",
-		"mapping": [
-			{
-				"local_attr": "Cor",
-				"local_label": "Cor",
-				"target_tax": "pa_cor",
-				"create_attribute": true,
-				"terms": [
-					{ "local_value": "Azul", "term_slug": "azul", "create": true },
-					{ "local_value": "Vermelho", "term_slug": "vermelho", "create": true }
-				]
-			}
-		],
-		"options": { "auto_create_terms": true, "update_variations": true, "create_backup": true }
-	}' | jq .
+### Removidos completamente
+- ❌ Templates reutilizáveis
+- ❌ Sistema de backup/rollback  
+- ❌ Hidratação e inferência agressiva
+- ❌ Opções comportamentais (auto_create_terms, update_variations, etc.)
+- ❌ Configurações globais complexas
+
+### APIs depreciadas
+- ❌ `term_name` em REST/CLI (use auto-derivação)
+- ❌ `save_template` em REST/CLI (removido)
+- ❌ Flags comportamentais em CLI (removidos)
+
+> ⚠️ APIs antigas geram logs `*.deprecated_fields` e são ignoradas
+
+## 🐛 Solução de problemas
+
+### Botão não aparece
+- ✅ Verifique se produto tem atributos locais (não-taxonômicos)
+- ✅ Confirme que o produto não tem apenas atributos `pa_*`
+
+### Dry-run trava em "Calculando..."
+- ✅ Aguarde auto-execução (3-5 segundos)
+- ✅ Use botão "Tentar novamente" se necessário
+- ✅ Verifique logs para erros específicos
+
+### Falsos erros "termo missing"
+- ✅ Versão 0.3.0 corrige inconsistência dry-run vs apply
+- ✅ Ambos usam `get_term_by()` para verificação
+
+### Performance com muitos produtos
+- ✅ Use CLI para operações em lote
+- ✅ Desative logs em produção se desnecessário
+- ✅ Considere cache de termos via filtros WP
+
+## 📚 Desenvolvimento
+
+### Arquitetura
+
+```
+src/
+├── Services/           # Lógica de negócio
+│   ├── Discovery_Service.php    # Detecta atributos locais  
+│   ├── Mapping_Service.php      # Orquestra dry-run/apply
+│   ├── Term_Service.php         # Gestão de termos/taxonomias
+│   └── Variation_Service.php    # Atualização de variações
+├── Admin/             # Interface WP Admin
+│   ├── Settings.php   # Página de configurações  
+│   └── UI.php         # Modal e scripts
+├── Rest/              # API REST
+├── Cli/               # Comandos WP-CLI
+└── Utils/             # Utilitários
+    ├── Logger.php     # Logging estruturado
+    └── Value_Normalizer.php  # Normalização de valores
 ```
 
-Para dry-run (pré-visualização), use `"mode": "dry_run"`.
+### Extensibilidade
 
-### Logs
+```php
+// Customizar auto-mapeamento
+add_filter('local2global_similarity_threshold', function($threshold) {
+    return 0.8; // Mais restritivo (padrão: 0.5)
+});
 
-Os logs são gravados no logger do WooCommerce (`WooCommerce > Status > Logs`). Busque por entradas com `source=local2global`.
+// Interceptar eventos de logging  
+add_action('local2global_log', function($event, $context, $corr_id) {
+    // Custom logging logic
+}, 10, 3);
 
-Principais marcadores de log:
-
-| Evento | Descrição |
-|--------|-----------|
-| Evento | Descrição |
-|--------|-----------|
-| `apply.start` | Início da aplicação de um lote de atributos |
-| `apply.options` | Opções normalizadas (auto_create_terms, update_variations, create_backup) |
-| `attributes.snapshot.before` / `attributes.snapshot.after` | Estado bruto dos atributos antes/depois |
-| `attribute.process.start` / `attribute.process.end` | Processamento de um atributo local específico |
-| `replace_attribute.scan` | Lista candidatos (filtra já taxonômicos) para substituição do atributo local |
-| `replace_attribute.success` | Substituição concluída para taxonomia alvo |
-| `replace_attribute.not_found` | Atributo local não localizado pelo nome normalizado |
-| `term.created` | Termo criado na taxonomia alvo |
-| `term.reuse` | Termo existente reutilizado (source: lookup/cache_or_lookup) |
-| `variation.slug_map_missing` | Valor de variação não mapeado no slug_map |
-| `variation.update.summary` | Resultado por atributo (updated, skipped, total_variations, reasons, hydrate_mode) |
-| `apply.term_assignment` | Atribuição de termos ao produto principal |
-| `apply.completed` | Resumo final (terms, variações) |
-| `variation.resync.start` | Início de reprocessamento isolado de variações |
-| `variation.resync.summary` | Agregado de todas as taxonomias (updated, skipped, total_variations, reasons) |
-| `variation.resync.completed` | Detalhes por taxonomia no resync |
-| `permission.denied` | Falha de permissão em endpoint REST |
-
-### Diagnóstico de Falhas Comuns
-
-- Atributo não substituído: Verifique `replace_attribute.scan` e se o nome normalizado do local aparece; caso não, o nome no produto pode estar diferente (maiúsculas, espaços, acentos).
-- Termos não criados: Confirme se `auto_create_terms` ou `create` está marcado no mapeamento; veja logs de `Termo criado.`.
-- Variações não atualizadas: Cheque `variation.slug_map_missing` e valide se os valores originais contêm acentos ou variações de grafia não normalizadas.
-- 403 em REST: Usuário precisa de `manage_woocommerce` ou `edit_products`.
-
-### WP-CLI
-
-Execução básica (exemplo conceitual – implementação CLI pode variar):
-
-```bash
-wp local2global map --product=123 \
-	--attr="Cor:pa_cor" \
-	--term="Azul:azul" \
-	--term="Vermelho:vermelho" \
-	--create-missing=1 --apply-variations=1 --backup=1
+// Modificar normalização de valores
+add_filter('local2global_normalize_value', function($normalized, $original) {
+    return custom_normalize($original);
+}, 10, 2);
 ```
 
-### Subcomando de Simulação
+## 📞 Suporte
 
-Cria automaticamente um produto variável de teste com atributos locais e executa o fluxo de mapeamento (dry-run ou apply):
+- 🐛 **Issues**: [GitHub Issues](#)
+- 📖 **Documentação**: [Wiki do projeto](#)  
+- 💬 **Discussões**: [GitHub Discussions](#)
 
-```bash
-wp local2global simulate \
-	--attr="Cor:pa_cor" \
-	--val="Azul:azul" --val="Vermelho:vermelho" \
-	--variations=2 \
-	--dry-run=0
-```
+## 📄 Licença
 
-Parâmetros:
-- `--attr local:pa_slug` (repetível) – cria atributo local e mapeia para taxonomia alvo (criando-a se necessário).
-- `--val valor_local:slug_global` (repetível) – valores e slugs alvo (criados se não existirem).
-- `--variations N` – quantas variações gerar (baseadas no primeiro atributo).
-- `--dry-run=1` – só simula sem aplicar.
+GPL v2 or later - veja [LICENSE](LICENSE) para detalhes.
 
-Após execução, verifique logs com `source=local2global` para detalhes (`apply.completed`).
+---
 
-### Reprocessar Variações (CLI)
-
-Reaplica apenas o ajuste das variações para taxonomias já mapeadas:
-
-```bash
-wp local2global variations-update --product=123
-wp local2global variations-update --product=123 --tax=pa_cor --tax=pa_tamanho
-```
-
-### Endpoint REST de Reprocessamento de Variações
-
-`POST /wp-json/local2global/v1/variations/update`
-
-Body exemplo:
-```json
-{
-	"product_id": 123,
-	"taxonomies": ["pa_cor", "pa_tamanho"]
-}
-```
-Resposta:
-```json
-{
-	"ok": true,
-	"corr_id": "...",
-	"result": {
-		"product_id":123,
-		"taxonomies": {
-			"pa_cor": {"updated":1, "skipped":2, "reasons": {"missing_source_meta":1,"already_ok":1,"no_slug_match":0}}
-		},
-		"aggregate": {"updated":1,"skipped":2,"reasons":{"missing_source_meta":1,"already_ok":1,"no_slug_match":0}}
-	}
-}
-```
-
-### Estratégia de Normalização
-
-Todos os valores locais e de variações passam por normalização unificada (classe `Value_Normalizer`) removendo acentos e diacríticos para casar com slugs de termos.
-
-### Interpretação de `variation.update.summary` e `variation.resync.summary`
-
-Campos principais:
-- `updated`: Quantidade de variações ajustadas.
-- `skipped`: Variações ignoradas (ver reasons).
-- `total_variations`: Total de variações examinadas para aquela taxonomia.
-- `hydrate_mode`: Campo legado mantido apenas para backward compatibility (sempre false na 0.3.0).
-
-Razões (`reasons`):
-- `missing_source_meta`: Não havia meta de origem; se `hydrate_mode=true`, plugin pode tentar inferir a partir de slug já aplicado ou título da variação.
-- `no_slug_match`: Valor normalizado não correspondeu a nenhum slug mapeado.
-- `already_ok`: Já continha meta target e nenhuma meta local.
-- `hydrated`: (Somente quando `hydrate_variations` ativo) Variação atualizada via inferência sem meta local original.
-
-`variation.resync.summary` agrega contagens somando `updated`, `skipped`, `total_variations` e razões de todas as taxonomias processadas.
-
-### Funcionalidades Removidas
-
-Os modos de hidratação e inferência agressiva foram removidos. Razões como `hydrated`, `inferred`, `ambiguous_inference` podem aparecer apenas em logs históricos ou ambientes que ainda possuam meta antiga — não são mais produzidas ativamente.
-2. Caso vago, tenta extrair possível valor do título (`post_title`) da variação.
-
-3. Normaliza e compara com o `slug_map` ativo; em caso de sucesso aplica a meta target e incrementa `hydrated`.
-
+**Versão 0.3.0** - Simplificado, determinístico e confiável ✨

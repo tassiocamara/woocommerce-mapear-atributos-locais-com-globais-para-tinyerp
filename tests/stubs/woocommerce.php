@@ -309,6 +309,20 @@ function wc_get_product( int $product_id ): ?WC_Product {
     return $test_products[ $product_id ] ?? null;
 }
 
+function get_option( string $option, $default = false ) {
+    // Para testes, retorna valor padrão ou configurações simuladas
+    switch ( $option ) {
+        case 'local2global_settings':
+            return [ 'logging_enabled' => true ];
+        default:
+            return $default;
+    }
+}
+
+function add_action( string $hook, callable $callback, int $priority = 10, int $accepted_args = 1 ): void {
+    // Stub para testes - não faz nada
+}
+
 function register_test_product( WC_Product $product ): void {
     global $test_products;
 
