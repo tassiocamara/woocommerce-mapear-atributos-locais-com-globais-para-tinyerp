@@ -123,7 +123,7 @@ class Rest_Controller {
             function () use ( $request, $corr_id ) {
                 $product_id = (int) $request->get_param( 'product_id' );
                 $mapping    = $request->get_param( 'mapping' );
-                $options    = $request->get_param( 'options' );
+                $options    = $request->get_param( 'options' ); // legacy (ignoradas >=0.3.0)
                 $mode       = strtolower( (string) $request->get_param( 'mode' ) );
 
                 if ( $product_id <= 0 ) {
@@ -145,11 +145,13 @@ class Rest_Controller {
                 }
 
                 $options = $options ? (array) $options : [];
-                // Normaliza flag hydrate_variations se enviada como string '1'/'true'
-                if ( isset( $options['hydrate_variations'] ) ) {
-                    $val = $options['hydrate_variations'];
-                    $options['hydrate_variations'] = ( $val === true || $val === 1 || $val === '1' || $val === 'true' );
-                }
+                    $mapping_deprecated = [];
+                    foreach ( (array) $mapping as $m ) {
+                        if ( isset( $m['term_name'] ) ) {
+                            $this->logger->warning( 'map.deprecated_fields', [ 'mapping_term_name' => true, 'corr_id' => $corr_id ] );
+                            break;
+                        }
+                    }
 
                 $this->logger->info(
                     'map.request_received',
@@ -161,10 +163,11 @@ class Rest_Controller {
                 );
 
                 try {
+                    // options legacy ignoradas (comportamento único)
                     if ( 'apply' === $mode ) {
-                        $result = $this->mapping->apply( $product_id, (array) $mapping, $options, $corr_id );
+                        $result = $this->mapping->apply( $product_id, (array) $mapping, [], $corr_id );
                     } else {
-                        $result = $this->mapping->dry_run( $product_id, (array) $mapping, $options, $corr_id );
+                        $result = $this->mapping->dry_run( $product_id, (array) $mapping, [], $corr_id );
                     }
 
                     if ( is_wp_error( $result ) ) {
@@ -261,11 +264,12 @@ class Rest_Controller {
         }
 
         $this->logger->info( 'variation.resync.request', [ 'corr_id' => $corr_id, 'product_id' => $product_id, 'tax_filter' => $taxonomies ] );
-        $hydrate_raw = $request->get_param( 'hydrate_variations' );
-        $aggressive_raw = $request->get_param( 'aggressive_hydrate_variations' );
-        $hydrate = ( $hydrate_raw === true || $hydrate_raw === 1 || $hydrate_raw === '1' || $hydrate_raw === 'true' );
-        $aggressive = ( $aggressive_raw === true || $aggressive_raw === 1 || $aggressive_raw === '1' || $aggressive_raw === 'true' );
-    $result = $this->mapping->update_variations_only( $product_id, $taxonomies ? array_map( 'sanitize_key', $taxonomies ) : null, $corr_id, $hydrate, $aggressive );
+        $hydr_legacy = $request->get_param( 'hydrate_variations' );
+        $agg_legacy  = $request->get_param( 'aggressive_hydrate_variations' );
+        if ( null !== $hydr_legacy || null !== $agg_legacy ) {
+            $this->logger->warning( 'variation.resync.deprecated_flags', [ 'hydrate_variations' => $hydr_legacy, 'aggressive_hydrate_variations' => $agg_legacy ] );
+        }
+    $result = $this->mapping->update_variations_only( $product_id, $taxonomies ? array_map( 'sanitize_key', $taxonomies ) : null, $corr_id );
         if ( is_wp_error( $result ) ) {
             $data = $result->get_error_data();
             if ( is_array( $data ) && empty( $data['corr_id'] ) ) {

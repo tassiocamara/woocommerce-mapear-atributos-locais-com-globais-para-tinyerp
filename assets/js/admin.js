@@ -14,13 +14,10 @@
         stepIndex: 0,
         attributes: [],
         mapping: [],
-        options: {
-            update_variations: true,
-            auto_create_terms: true,
-            create_backup: true,
-            save_template: true,
-        },
+        options: {}, // opções avançadas removidas (modo determinístico)
         dryRun: null,
+        dryRunError: null,
+        _dryRunRequested: false,
         log: [],
     };
 
@@ -47,11 +44,6 @@
             render: renderTermMatrixStep,
         },
         {
-            id: 'options',
-            title: __('Opções avançadas', 'local2global'),
-            render: renderOptionsStep,
-        },
-        {
             id: 'dry-run',
             title: settings.i18n.dryRunTitle,
             render: renderDryRunStep,
@@ -71,6 +63,8 @@
         state.stepIndex = 0;
         state.log = [];
         state.dryRun = null;
+        state.dryRunError = null;
+        state._dryRunRequested = false;
 
         discoverAttributes().then(() => {
             modal.removeAttribute('hidden');
@@ -113,10 +107,8 @@
 
         if (state.stepIndex === steps.length - 1) {
             nextButton.textContent = __('Fechar', 'local2global');
-        } else if (state.stepIndex === steps.length - 2) {
-            nextButton.textContent = settings.i18n.apply;
-        } else if (state.stepIndex === steps.length - 3) {
-            nextButton.textContent = settings.i18n.dryRun;
+        } else if (steps[state.stepIndex].id === 'dry-run') {
+            nextButton.textContent = state.dryRun ? settings.i18n.apply : settings.i18n.dryRun;
         } else {
             nextButton.textContent = __('Continuar', 'local2global');
         }
@@ -149,7 +141,7 @@
 
     function renderSelectAttributeStep(container) {
         const intro = document.createElement('p');
-        intro.textContent = __('Selecione um atributo global correspondente para cada atributo local.', 'local2global');
+        intro.textContent = __('Associe cada atributo local a um atributo global existente ou escolha criar automaticamente. Slug e rótulo serão derivados do nome local.', 'local2global');
         container.appendChild(intro);
 
         state.mapping.forEach((map, index) => {
@@ -160,104 +152,53 @@
             heading.textContent = map.local_label;
             wrapper.appendChild(heading);
 
-            const selectLabel = document.createElement('label');
-            selectLabel.textContent = __('Atributo global', 'local2global');
             const select = document.createElement('select');
             select.dataset.index = index;
-            select.innerHTML = '<option value="">' + __('— Selecionar —', 'local2global') + '</option>';
+            select.className = 'local2global-attr-select';
+            select.innerHTML = '<option value="">' + __('— Selecionar atributo global —', 'local2global') + '</option>';
             settings.attributes.forEach((attr) => {
                 const option = document.createElement('option');
                 option.value = attr.slug;
                 option.textContent = attr.label + ' (' + attr.slug + ')';
-                if (attr.slug === map.target_tax) {
+                if (!map.create_attribute && attr.slug === map.target_tax) {
                     option.selected = true;
                 }
                 select.appendChild(option);
             });
-
             const createOption = document.createElement('option');
             createOption.value = '__create_new__';
-            createOption.textContent = __('Criar novo atributo global', 'local2global');
+            createOption.textContent = __('Criar novo atributo', 'local2global');
+            if (map.create_attribute) {
+                createOption.selected = true;
+            }
             select.appendChild(createOption);
 
-            select.addEventListener('change', (event) => {
-                const target = event.target;
-                const entry = state.mapping[parseInt(target.dataset.index, 10)];
-                if (target.value === '__create_new__') {
+            select.addEventListener('change', (e) => {
+                const entry = state.mapping[parseInt(e.target.dataset.index, 10)];
+                if (e.target.value === '__create_new__') {
                     entry.create_attribute = true;
                     entry.target_tax = 'pa_' + slugify(entry.local_label);
-                    select.value = '';
                 } else {
-                    entry.target_tax = target.value;
                     entry.create_attribute = false;
+                    entry.target_tax = e.target.value;
                 }
                 renderStep();
             });
+            wrapper.appendChild(select);
 
-            selectLabel.appendChild(select);
-            wrapper.appendChild(selectLabel);
-
-            const labelField = document.createElement('label');
-            labelField.textContent = __('Rótulo do atributo global', 'local2global');
-            const labelInput = document.createElement('input');
-            labelInput.type = 'text';
-            labelInput.value = map.target_label || map.local_label;
-            labelInput.dataset.index = index;
-            labelInput.addEventListener('input', (event) => {
-                state.mapping[parseInt(event.target.dataset.index, 10)].target_label = event.target.value;
-            });
-            labelField.appendChild(labelInput);
-            wrapper.appendChild(labelField);
-
-            const slugField = document.createElement('label');
-            slugField.textContent = __('Slug alvo (pa_slug)', 'local2global');
-            const slugInput = document.createElement('input');
-            slugInput.type = 'text';
-            slugInput.value = map.target_tax;
-            slugInput.dataset.index = index;
-            slugInput.addEventListener('input', (event) => {
-                state.mapping[parseInt(event.target.dataset.index, 10)].target_tax = ensurePaPrefix(event.target.value);
-            });
-            slugField.appendChild(slugInput);
-            wrapper.appendChild(slugField);
-
-            const createCheckbox = document.createElement('label');
-            const createInput = document.createElement('input');
-            createInput.type = 'checkbox';
-            createInput.checked = !!map.create_attribute;
-            createInput.dataset.index = index;
-            createInput.addEventListener('change', (event) => {
-                state.mapping[parseInt(event.target.dataset.index, 10)].create_attribute = event.target.checked;
-            });
-            createCheckbox.appendChild(createInput);
-            createCheckbox.appendChild(document.createTextNode(' ' + __('Criar atributo se necessário', 'local2global')));
-            wrapper.appendChild(createCheckbox);
-
-            if (state.attributes[index].suggestion) {
-                const suggestion = document.createElement('p');
-                suggestion.className = 'description';
-                suggestion.textContent = __('Template sugerido aplicado. Revise antes de continuar.', 'local2global');
-                wrapper.appendChild(suggestion);
+            if (map.create_attribute) {
+                const hint = document.createElement('p');
+                hint.className = 'description';
+                hint.textContent = __('Será criado atributo global: ', 'local2global') + map.target_tax;
+                wrapper.appendChild(hint);
             }
-
             container.appendChild(wrapper);
         });
     }
 
     function renderTermMatrixStep(container) {
-        const intro = document.createElement('div');
-        intro.innerHTML = '<p>' + __('Associe cada valor local a um termo global existente ou indique a criação automática.', 'local2global') + '</p>';
-        const autoMap = document.createElement('button');
-        autoMap.type = 'button';
-        autoMap.className = 'button';
-        autoMap.textContent = settings.i18n.autoMap;
-        autoMap.addEventListener('click', () => {
-            Promise.all(state.mapping.map(loadTermOptions)).then(() => {
-                state.mapping.forEach(autoMapAttributeTerms);
-                renderStep();
-            });
-        });
-        intro.appendChild(autoMap);
+        const intro = document.createElement('p');
+        intro.textContent = __('Associe cada valor local a um termo global existente ou selecione criar novo. O nome e slug do termo criado serão derivados do valor local.', 'local2global');
         container.appendChild(intro);
 
         state.mapping.forEach((map, mapIndex) => {
@@ -276,80 +217,46 @@
                 tr.appendChild(localValueCell);
 
                 const globalCell = document.createElement('td');
-
                 const select = document.createElement('select');
                 select.className = 'local2global-term-select';
                 select.dataset.attrIndex = mapIndex;
                 select.dataset.termIndex = termIndex;
-                select.innerHTML = '<option value="">' + __('— Selecionar termo existente —', 'local2global') + '</option>';
+                select.innerHTML = '<option value="">' + __('— Selecionar termo —', 'local2global') + '</option>';
 
                 ensureTermOptions(map).forEach((termOption) => {
                     const option = document.createElement('option');
                     option.value = termOption.slug;
                     option.textContent = termOption.name + ' (' + termOption.slug + ')';
-                    if (termOption.slug === term.term_slug) {
+                    if (termOption.slug === term.term_slug && !term.create) {
                         option.selected = true;
                     }
                     select.appendChild(option);
                 });
 
+                // Opção para criar novo termo
+                const createValue = '__create__';
+                const createOption = document.createElement('option');
+                createOption.value = createValue;
+                createOption.textContent = __('Criar novo termo', 'local2global') + ' (' + term.local_value + ')';
+                if (term.create) {
+                    createOption.selected = true;
+                }
+                select.appendChild(createOption);
+
                 select.addEventListener('change', (event) => {
                     const attrIdx = parseInt(event.target.dataset.attrIndex, 10);
-                    const termIdx = parseInt(event.target.dataset.termIndex, 10);
-                    const entry = state.mapping[attrIdx].terms[termIdx];
-                    entry.term_slug = event.target.value;
-                    entry.term_name = event.target.options[event.target.selectedIndex]?.textContent?.split(' (')[0] || entry.term_name;
-                    entry.create = false;
+                    const tIdx = parseInt(event.target.dataset.termIndex, 10);
+                    const entry = state.mapping[attrIdx].terms[tIdx];
+                    if (event.target.value === createValue) {
+                        entry.create = true;
+                        entry.term_slug = ''; // slug será gerado no backend
+                    } else {
+                        entry.create = false;
+                        entry.term_slug = event.target.value;
+                    }
                 });
 
-                const customWrapper = document.createElement('div');
-                customWrapper.className = 'local2global-term-custom';
-
-                const nameInput = document.createElement('input');
-                nameInput.type = 'text';
-                nameInput.placeholder = __('Nome do termo', 'local2global');
-                nameInput.value = term.term_name || term.local_value;
-                nameInput.dataset.attrIndex = mapIndex;
-                nameInput.dataset.termIndex = termIndex;
-                nameInput.addEventListener('input', onTermNameChange);
-
-                const slugInput = document.createElement('input');
-                slugInput.type = 'text';
-                slugInput.placeholder = __('Slug', 'local2global');
-                slugInput.value = term.term_slug || slugify(term.term_name || term.local_value);
-                slugInput.dataset.attrIndex = mapIndex;
-                slugInput.dataset.termIndex = termIndex;
-                slugInput.addEventListener('input', onTermSlugChange);
-
-                const createLabel = document.createElement('label');
-                const createCheckbox = document.createElement('input');
-                createCheckbox.type = 'checkbox';
-                createCheckbox.checked = !!term.create;
-                createCheckbox.dataset.attrIndex = mapIndex;
-                createCheckbox.dataset.termIndex = termIndex;
-                createCheckbox.addEventListener('change', (event) => {
-                    const attrIdx = parseInt(event.target.dataset.attrIndex, 10);
-                    const termIdx = parseInt(event.target.dataset.termIndex, 10);
-                    state.mapping[attrIdx].terms[termIdx].create = event.target.checked;
-                });
-                createLabel.appendChild(createCheckbox);
-                createLabel.appendChild(document.createTextNode(' ' + settings.i18n.createTerm));
-
-                const refreshButton = document.createElement('button');
-                refreshButton.type = 'button';
-                refreshButton.className = 'button button-small';
-                refreshButton.textContent = __('Atualizar termos', 'local2global');
-                refreshButton.addEventListener('click', () => {
-                    loadTermOptions(map).then(() => renderStep());
-                });
-
-                customWrapper.appendChild(select);
-                customWrapper.appendChild(nameInput);
-                customWrapper.appendChild(slugInput);
-                customWrapper.appendChild(createLabel);
-                customWrapper.appendChild(refreshButton);
-
-                globalCell.appendChild(customWrapper);
+                globalCell.appendChild(select);
                 tr.appendChild(globalCell);
                 tbody.appendChild(tr);
             });
@@ -360,38 +267,34 @@
         });
     }
 
-    function renderOptionsStep(container) {
-        const description = document.createElement('p');
-        description.textContent = __('Ajuste as opções antes de aplicar o mapeamento.', 'local2global');
-        container.appendChild(description);
-
-        const options = [
-            { key: 'update_variations', label: settings.i18n.updateVariations },
-            { key: 'auto_create_terms', label: settings.i18n.createTerm },
-            { key: 'create_backup', label: settings.i18n.backup },
-            { key: 'save_template', label: __('Aplicar como template para outros produtos', 'local2global') },
-            { key: 'hydrate_variations', label: __('Hidratar variações (recuperar valores ausentes)', 'local2global') },
-            { key: 'aggressive_hydrate_variations', label: __('Inferência agressiva multi-termos', 'local2global') },
-        ];
-
-        options.forEach((option) => {
-            const label = document.createElement('label');
-            const input = document.createElement('input');
-            input.type = 'checkbox';
-            input.checked = !!state.options[option.key];
-            input.dataset.optionKey = option.key;
-            input.addEventListener('change', (event) => {
-                state.options[event.target.dataset.optionKey] = event.target.checked;
-            });
-            label.appendChild(input);
-            label.appendChild(document.createTextNode(' ' + option.label));
-            container.appendChild(label);
-        });
-    }
 
     function renderDryRunStep(container) {
-        if (!state.dryRun) {
+        if (!state.dryRun && !state.dryRunError) {
             container.innerHTML = '<p>' + __('Calculando pré-visualização…', 'local2global') + '</p>';
+            // Dispara automaticamente uma única vez ao entrar na etapa.
+            if (!state._dryRunRequested) {
+                state._dryRunRequested = true;
+                performDryRun();
+            }
+            return;
+        }
+
+        if (state.dryRunError) {
+            const errorBox = document.createElement('div');
+            errorBox.className = 'notice notice-error';
+            errorBox.innerHTML = '<p><strong>' + __('Falha ao calcular pré-visualização:', 'local2global') + '</strong> ' + escapeHtml(state.dryRunError.message) + '</p>' + (state.dryRunError.details ? '<pre>' + escapeHtml(state.dryRunError.details) + '</pre>' : '');
+            const retryBtn = document.createElement('button');
+            retryBtn.type = 'button';
+            retryBtn.className = 'button';
+            retryBtn.textContent = __('Tentar novamente', 'local2global');
+            retryBtn.addEventListener('click', () => {
+                state.dryRunError = null;
+                state.dryRun = null;
+                state._dryRunRequested = false;
+                renderStep();
+            });
+            errorBox.appendChild(retryBtn);
+            container.appendChild(errorBox);
             return;
         }
 
@@ -483,32 +386,18 @@
     }
 
     function buildMappingFromAttribute(attr) {
-        const suggestion = attr.suggestion || {};
-        const mapping = {
+        return {
             local_attr: attr.name,
             local_label: attr.label,
-            target_tax: ensurePaPrefix(suggestion.target_tax || ''),
-            target_label: suggestion.target_label || attr.label,
-            create_attribute: !suggestion.target_tax,
+            target_tax: '',
+            create_attribute: false,
             terms: attr.values.map((value) => ({
                 local_value: value,
-                term_slug: suggestion.terms ? suggestion.terms[value] : '',
-                term_name: value,
-                create: !!suggestion.terms && !suggestion.terms[value],
+                term_slug: '',
+                create: false,
             })),
             termOptions: [],
         };
-
-        mapping.terms.forEach((term) => {
-            if (!term.term_slug) {
-                term.term_slug = slugify(term.term_name || term.local_value);
-            }
-            if (!suggestion.terms) {
-                term.create = state.options.auto_create_terms;
-            }
-        });
-
-        return mapping;
     }
 
     function ensureTermOptions(map) {
@@ -531,31 +420,20 @@
             path: '/local2global/v1/terms/' + map.target_tax,
         }).then((response) => {
             map.termOptions = response.terms || [];
+            autoMapAttributeTerms(map);
             return map.termOptions;
         }).catch(() => {
             map.termOptions = [];
         });
     }
 
-    function onTermNameChange(event) {
-        const attrIdx = parseInt(event.target.dataset.attrIndex, 10);
-        const termIdx = parseInt(event.target.dataset.termIndex, 10);
-        const entry = state.mapping[attrIdx].terms[termIdx];
-        entry.term_name = event.target.value;
-        if (!entry.term_slug || entry.term_slug === slugify(entry.local_value)) {
-            entry.term_slug = slugify(event.target.value);
-        }
-    }
-
-    function onTermSlugChange(event) {
-        const attrIdx = parseInt(event.target.dataset.attrIndex, 10);
-        const termIdx = parseInt(event.target.dataset.termIndex, 10);
-        state.mapping[attrIdx].terms[termIdx].term_slug = slugify(event.target.value);
-    }
+    // Manipuladores de nome/slug removidos (simplificação UX)
 
     function performDryRun() {
         nextButton.disabled = true;
         state.dryRun = null;
+        state.dryRunError = null;
+        prepareTermsForDryRun();
         return apiFetch({
             path: '/local2global/v1/map',
             method: 'POST',
@@ -570,10 +448,23 @@
             state.dryRunCorrId = result?.corr_id || null;
         }).catch((error) => {
             const formatted = formatApiError(error);
-            window.alert(formatted.message);
+            state.dryRunError = formatted;
         }).finally(() => {
             nextButton.disabled = false;
             renderStep();
+        });
+    }
+
+    function prepareTermsForDryRun() {
+        state.mapping.forEach((map) => {
+            // Se o usuário pulou a matriz, map.terms pode não ter sido tocado e termOptions pode estar vazia.
+            map.terms.forEach((t) => {
+                const noSelection = !t.term_slug || t.term_slug === '';
+                if (noSelection) {
+                    t.create = true;
+                    t.term_slug = ''; // backend gera
+                }
+            });
         });
     }
 
@@ -655,14 +546,11 @@
             local_attr: map.local_attr,
             local_label: map.local_label,
             target_tax: ensurePaPrefix(map.target_tax),
-            target_label: map.target_label,
             create_attribute: map.create_attribute,
-            save_template: state.options.save_template,
             terms: map.terms.map((term) => ({
                 local_value: term.local_value,
                 term_slug: term.term_slug,
-                term_name: term.term_name,
-                create: term.create,
+                create: !!term.create,
             })),
         }));
     }
@@ -713,6 +601,10 @@
                 term.term_slug = bestMatch.slug;
                 term.term_name = bestMatch.name;
                 term.create = false;
+            } else {
+                // Nenhum termo existente suficientemente similar: marcar para criação.
+                term.create = true;
+                term.term_slug = ''; // backend derivará
             }
         });
     }
@@ -778,18 +670,29 @@
             return;
         }
 
-        if (state.stepIndex === steps.length - 3) {
+        const current = steps[state.stepIndex];
+        if (current.id === 'dry-run') {
+            if (!state.dryRun && !state.dryRunError) {
+                // Caso usuário clique antes do auto disparo concluir, forçar execução.
+                if (!state._dryRunRequested) {
+                    state._dryRunRequested = true;
+                    performDryRun();
+                }
+                return;
+            }
+            if (state.dryRunError) {
+                // Não avança enquanto houver erro; usuário deve retry.
+                return;
+            }
+            // avançar para apply com resultado válido
             state.stepIndex += 1;
-            state.dryRun = null;
             renderStep();
-            performDryRun();
+            applyMapping();
             return;
         }
 
-        if (state.stepIndex === steps.length - 2) {
-            applyMapping();
-            state.stepIndex += 1;
-            renderStep();
+        if (current.id === 'apply') {
+            closeModal();
             return;
         }
 

@@ -9,7 +9,7 @@ use WC_Product_Attribute;
 use WC_Product_Variation;
 
 class Discovery_Service {
-    public function __construct( private Templates_Service $templates ) {}
+    public function __construct() {}
 
     /**
      * @return array{
@@ -48,7 +48,7 @@ class Discovery_Service {
                 'label'         => $label,
                 'values'        => $values,
                 'in_variations' => $this->attribute_used_in_variations( $product, $name, $values ),
-                'suggestion'    => $this->templates->get_template_for_label( $label ),
+                'suggestion'    => null, // templates removidos na 0.3.0
             ];
         }
 

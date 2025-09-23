@@ -1,11 +1,11 @@
 <?php
 /**
  * Plugin Name: Local 2 Global Attribute Mapper
- * Description: Facilita o mapeamento de atributos locais do WooCommerce para atributos globais com variações e templates reutilizáveis.
+ * Description: Mapeia atributos locais do WooCommerce para atributos globais de forma simplificada e atualiza variações automaticamente.
  * Plugin URI: https://evolury.com.br
  * Author: Tássio Câmara
  * Author URI: https://evolury.com.br
- * Version: 0.2.1
+ * Version: 0.3.0
  * Requires at least: 6.4
  * Requires PHP: 8.1
  * Text Domain: local2global
@@ -22,7 +22,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-const VERSION = '0.2.1';
+const VERSION = '0.3.0';
 
 if ( ! defined( 'L2G_DEBUG' ) ) {
     define( 'L2G_DEBUG', defined( 'WP_DEBUG' ) && WP_DEBUG );

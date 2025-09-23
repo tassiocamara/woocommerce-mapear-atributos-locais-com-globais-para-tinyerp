@@ -6,13 +6,10 @@ require __DIR__ . '/stubs/woocommerce.php';
 require __DIR__ . '/../src/Services/Mapping_Service.php';
 require __DIR__ . '/../src/Services/Variation_Service.php';
 require __DIR__ . '/../src/Services/Term_Service.php';
-require __DIR__ . '/../src/Services/Templates_Service.php';
-require __DIR__ . '/../src/Services/Rollback_Service.php';
 require __DIR__ . '/../src/Utils/Logger.php';
+require __DIR__ . '/../src/Utils/Value_Normalizer.php';
 
 use Evolury\Local2Global\Services\Mapping_Service;
-use Evolury\Local2Global\Services\Rollback_Service;
-use Evolury\Local2Global\Services\Templates_Service;
 use Evolury\Local2Global\Services\Term_Service;
 use Evolury\Local2Global\Services\Variation_Service;
 use Evolury\Local2Global\Utils\Logger;
@@ -43,7 +40,7 @@ class StubTermService extends Term_Service {
         return $this->attributes[ $taxonomy ] ?? [ 'attribute_id' => 9, 'taxonomy' => $taxonomy ];
     }
 
-    public function ensure_terms( string $taxonomy, array $terms, bool $allow_creation ): array {
+    public function ensure_terms( string $taxonomy, array $terms ): array {
         if ( $this->termException ) {
             throw $this->termException;
         }
@@ -64,45 +61,7 @@ class StubTermService extends Term_Service {
     }
 }
 
-class StubTemplatesService extends Templates_Service {
-    public array $saved = [];
-
-    public function __construct( Logger $logger ) {
-        parent::__construct( $logger );
-    }
-
-    public function get_templates(): array {
-        return $this->saved;
-    }
-
-    public function get_template_for_label( string $label ): ?array {
-        return $this->saved[ $label ] ?? null;
-    }
-
-    public function save_template( string $label, array $config ): void {
-        $this->saved[ $label ] = $config;
-    }
-}
-
-class StubRollbackService extends Rollback_Service {
-    public bool $fail = false;
-    public array $backups = [];
-
-    public function __construct( Logger $logger ) {
-        parent::__construct( $logger );
-    }
-
-    public function create_backup( \WC_Product $product, array $original_attributes ): string {
-        if ( $this->fail ) {
-            throw new RuntimeException( 'backup failed' );
-        }
-
-        $id                = 'stub-' . $product->get_id();
-        $this->backups[]   = [ 'product_id' => $product->get_id(), 'count' => count( $original_attributes ) ];
-
-        return $id;
-    }
-}
+// Templates e Rollback removidos na 0.3.0
 
 class FailingVariationService extends Variation_Service {
     public bool $shouldFail = false;
@@ -152,16 +111,16 @@ final class TestRunner {
     }
 
     private function createMappingService(): Mapping_Service {
-        $reflection = new ReflectionClass( Mapping_Service::class );
-        /** @var Mapping_Service $service */
-        $service    = $reflection->newInstanceWithoutConstructor();
+        global $test_wc_logger;
+        $test_wc_logger = null;
 
-        return $service;
+        $logger     = new Logger();
+        $terms      = new StubTermService( $logger );
+        $variations = new FailingVariationService( $logger );
+        
+        return new Mapping_Service( $terms, $variations, $logger );
     }
 
-    /**
-     * @return array{0:Mapping_Service,1:StubTermService,2:FailingVariationService,3:StubTemplatesService,4:StubRollbackService,5:Logger}
-     */
     private function createMappingServiceWithDependencies(): array {
         global $test_wc_logger;
         $test_wc_logger = null;
@@ -169,11 +128,9 @@ final class TestRunner {
         $logger     = new Logger();
         $terms      = new StubTermService( $logger );
         $variations = new FailingVariationService( $logger );
-        $templates  = new StubTemplatesService( $logger );
-        $rollback   = new StubRollbackService( $logger );
-        $service    = new Mapping_Service( $terms, $variations, $templates, $rollback, $logger );
+        $service    = new Mapping_Service( $terms, $variations, $logger );
 
-        return [ $service, $terms, $variations, $templates, $rollback, $logger ];
+        return [ $service, $terms, $variations, $logger ];
     }
 
     private function invokeReplaceAttribute( Mapping_Service $service, WC_Product $product, string $local, string $taxonomy, int $attribute_id, array $term_ids ): bool {
@@ -274,7 +231,7 @@ final class TestRunner {
         $product = new WC_Product( [ 'cor' => $attribute ], 501 );
         register_test_product( $product );
 
-        [ $service, $terms, $variations, $templates ] = $this->createMappingServiceWithDependencies();
+    [ $service, $terms, $variations ] = $this->createMappingServiceWithDependencies();
 
         $terms->attributes['pa_cor'] = [ 'attribute_id' => 31, 'taxonomy' => 'pa_cor' ];
         $terms->terms['pa_cor']       = [
@@ -287,30 +244,28 @@ final class TestRunner {
                 'local_attr'    => 'Cor',
                 'local_label'   => 'Cor',
                 'target_tax'    => 'pa_cor',
-                'terms'         => [
-                    [ 'local_value' => 'Azul' ],
-                    [ 'local_value' => 'Preto', 'create' => true ],
-                ],
-                'save_template' => true,
+                    'terms'         => [],
             ],
         ];
 
-        $result = $service->apply( $product->get_id(), $mapping, [ 'auto_create_terms' => true ], 'l2g_success' );
+    $result = $service->apply( $product->get_id(), $mapping, [], 'l2g_success' );
 
         $this->assertTrue( ! is_wp_error( $result ), 'Apply should succeed' );
         $this->assertSame( [ 'pa_cor' ], $result['updated_attrs'], 'Updated attributes mismatch' );
         $this->assertTrue( $product->was_saved(), 'Product should be saved' );
-        $this->assertTrue( isset( $templates->saved['Cor'] ), 'Template should be stored' );
+    // Templates removidos: não há mais salvamento
         $this->assertSame( 1, count( $test_object_terms ), 'Terms should be assigned once' );
         $this->assertSame( [ 11, 12 ], $test_object_terms[0]['terms'], 'Assigned terms mismatch' );
 
         global $test_wc_logger;
         $this->assertSame( 'local2global', $test_wc_logger->logs[0]['context']['source'] ?? null, 'Log source mismatch' );
         $has_corr = false;
+        if ( $test_wc_logger ) {
         foreach ( $test_wc_logger->logs as $entry ) {
             if ( ( $entry['context']['corr_id'] ?? null ) === 'l2g_success' ) {
                 $has_corr = true;
             }
+        }
         }
         $this->assertTrue( $has_corr, 'Correlation id should appear in logs' );
     }
@@ -346,7 +301,7 @@ final class TestRunner {
         $product = new WC_Product_Variable( [ 'cor' => $attribute ], 503 );
         register_test_product( $product );
 
-        [ $service, $terms, $variations ] = $this->createMappingServiceWithDependencies();
+    [ $service, $terms, $variations ] = $this->createMappingServiceWithDependencies();
         $variations->shouldFail          = true;
 
         $terms->attributes['pa_cor'] = [ 'attribute_id' => 40, 'taxonomy' => 'pa_cor' ];
@@ -363,7 +318,7 @@ final class TestRunner {
                     'terms'       => [ [ 'local_value' => 'Azul' ] ],
                 ],
             ],
-            [ 'auto_create_terms' => true, 'update_variations' => true ],
+            [],
             'l2g_fail'
         );
 

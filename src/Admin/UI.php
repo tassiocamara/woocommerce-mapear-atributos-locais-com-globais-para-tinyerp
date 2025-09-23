@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Evolury\Local2Global\Admin;
 
+use Evolury\Local2Global\Services\Discovery_Service;
+
 class UI {
-    public function __construct( private string $plugin_url ) {}
+    public function __construct( private Discovery_Service $discovery, private string $plugin_url ) {}
 
     public function hooks(): void {
         add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_assets' ] );
@@ -81,6 +83,12 @@ class UI {
     public function render_button(): void {
         global $post;
         if ( empty( $post->ID ) ) {
+            return;
+        }
+
+        // Verificar se o produto tem atributos locais antes de mostrar o botão
+        $discovery_result = $this->discovery->discover( $post->ID );
+        if ( empty( $discovery_result['attributes'] ) ) {
             return;
         }
 
