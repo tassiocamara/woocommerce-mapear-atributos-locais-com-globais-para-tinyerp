@@ -16,6 +16,8 @@
         mapping: [],
         options: {}, // opções avançadas removidas (modo determinístico)
         dryRun: null,
+        dryRunError: null,
+        _dryRunRequested: false,
         log: [],
     };
 
@@ -61,6 +63,8 @@
         state.stepIndex = 0;
         state.log = [];
         state.dryRun = null;
+        state.dryRunError = null;
+        state._dryRunRequested = false;
 
         discoverAttributes().then(() => {
             modal.removeAttribute('hidden');
@@ -265,8 +269,32 @@
 
 
     function renderDryRunStep(container) {
-        if (!state.dryRun) {
+        if (!state.dryRun && !state.dryRunError) {
             container.innerHTML = '<p>' + __('Calculando pré-visualização…', 'local2global') + '</p>';
+            // Dispara automaticamente uma única vez ao entrar na etapa.
+            if (!state._dryRunRequested) {
+                state._dryRunRequested = true;
+                performDryRun();
+            }
+            return;
+        }
+
+        if (state.dryRunError) {
+            const errorBox = document.createElement('div');
+            errorBox.className = 'notice notice-error';
+            errorBox.innerHTML = '<p><strong>' + __('Falha ao calcular pré-visualização:', 'local2global') + '</strong> ' + escapeHtml(state.dryRunError.message) + '</p>' + (state.dryRunError.details ? '<pre>' + escapeHtml(state.dryRunError.details) + '</pre>' : '');
+            const retryBtn = document.createElement('button');
+            retryBtn.type = 'button';
+            retryBtn.className = 'button';
+            retryBtn.textContent = __('Tentar novamente', 'local2global');
+            retryBtn.addEventListener('click', () => {
+                state.dryRunError = null;
+                state.dryRun = null;
+                state._dryRunRequested = false;
+                renderStep();
+            });
+            errorBox.appendChild(retryBtn);
+            container.appendChild(errorBox);
             return;
         }
 
@@ -404,6 +432,7 @@
     function performDryRun() {
         nextButton.disabled = true;
         state.dryRun = null;
+        state.dryRunError = null;
         return apiFetch({
             path: '/local2global/v1/map',
             method: 'POST',
@@ -418,7 +447,7 @@
             state.dryRunCorrId = result?.corr_id || null;
         }).catch((error) => {
             const formatted = formatApiError(error);
-            window.alert(formatted.message);
+            state.dryRunError = formatted;
         }).finally(() => {
             nextButton.disabled = false;
             renderStep();
@@ -625,18 +654,23 @@
 
         const current = steps[state.stepIndex];
         if (current.id === 'dry-run') {
-            if (!state.dryRun) {
-                state.dryRun = null;
-                renderStep();
-                performDryRun();
-                return;
-            } else {
-                // avançar para apply
-                state.stepIndex += 1;
-                renderStep();
-                applyMapping();
+            if (!state.dryRun && !state.dryRunError) {
+                // Caso usuário clique antes do auto disparo concluir, forçar execução.
+                if (!state._dryRunRequested) {
+                    state._dryRunRequested = true;
+                    performDryRun();
+                }
                 return;
             }
+            if (state.dryRunError) {
+                // Não avança enquanto houver erro; usuário deve retry.
+                return;
+            }
+            // avançar para apply com resultado válido
+            state.stepIndex += 1;
+            renderStep();
+            applyMapping();
+            return;
         }
 
         if (current.id === 'apply') {
