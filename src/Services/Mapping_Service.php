@@ -76,7 +76,10 @@ class Mapping_Service {
                     foreach ( $attribute_mapping['terms'] ?? [] as $term_map ) {
                         $local_value = (string) ( $term_map['local_value'] ?? '' );
                         $slug        = sanitize_title( $term_map['term_slug'] ?? $term_map['term_name'] ?? $local_value );
-                        $term = null; // evitamos chamada term_exists em dry_run fora do ambiente WP
+                        $term = null;
+                        if ( $attribute_exists && function_exists( 'get_term_by' ) ) {
+                            $term = get_term_by( 'slug', $slug, $target_tax );
+                        }
                         $log_context = [ 'local_value' => $local_value, 'slug' => $slug, 'attribute_exists' => $attribute_exists, 'target_tax' => $target_tax ];
                         if ( $term ) {
                             $term_actions['existing'][] = $local_value;

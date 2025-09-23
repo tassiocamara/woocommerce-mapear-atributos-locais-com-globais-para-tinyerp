@@ -434,14 +434,12 @@
         state.dryRun = null;
         state.dryRunError = null;
         prepareTermsForDryRun();
-        const serialized = serializeMapping();
-        console.log('DEBUG dry-run mapping:', JSON.stringify(serialized, null, 2));
         return apiFetch({
             path: '/local2global/v1/map',
             method: 'POST',
             data: {
                 product_id: state.productId,
-                mapping: serialized,
+                mapping: serializeMapping(),
                 options: state.options,
                 mode: 'dry-run',
             },
