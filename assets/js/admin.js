@@ -144,6 +144,9 @@
         intro.textContent = __('Associe cada atributo local a um atributo global existente ou escolha criar automaticamente. Slug e rótulo serão derivados do nome local.', 'local2global');
         container.appendChild(intro);
 
+        // Seleção automática de atributos globais baseada em similaridade
+        autoMapGlobalAttributes();
+
         state.mapping.forEach((map, index) => {
             const wrapper = document.createElement('div');
             wrapper.className = 'local2global-attribute-card';
@@ -576,6 +579,55 @@
             .replace(/-{2,}/g, '-');
     }
 
+    function autoMapGlobalAttributes() {
+        if (!settings.attributes || !settings.attributes.length) {
+            return;
+        }
+
+        state.mapping.forEach((map) => {
+            // Se já tem atributo selecionado, não alterar
+            if (map.target_tax && !map.create_attribute) {
+                return;
+            }
+
+            const normalizedLocal = normalizeString(map.local_label);
+            let bestMatch = null;
+            let bestScore = 0;
+
+            settings.attributes.forEach((attr) => {
+                const normalizedAttr = normalizeString(attr.label);
+                const normalizedSlug = normalizeString(attr.slug.replace('pa_', ''));
+
+                // Correspondência exata tem prioridade máxima
+                if (normalizedAttr === normalizedLocal || normalizedSlug === normalizedLocal) {
+                    bestMatch = attr;
+                    bestScore = 1;
+                    return;
+                }
+
+                // Calcular similaridade para match parcial
+                const labelSimilarity = similarity(normalizedLocal, normalizedAttr);
+                const slugSimilarity = similarity(normalizedLocal, normalizedSlug);
+                const currentScore = Math.max(labelSimilarity, slugSimilarity);
+
+                if (currentScore > bestScore) {
+                    bestScore = currentScore;
+                    bestMatch = attr;
+                }
+            });
+
+            // Se encontrou um match com similaridade > 70%, selecionar automaticamente
+            if (bestMatch && bestScore > 0.7) {
+                map.create_attribute = false;
+                map.target_tax = bestMatch.slug;
+            } else {
+                // Nenhum atributo global similar: marcar para criação automática
+                map.create_attribute = true;
+                map.target_tax = 'pa_' + slugify(map.local_label);
+            }
+        });
+    }
+
     function autoMapAttributeTerms(map) {
         if (!map.termOptions || !map.termOptions.length) {
             return;
@@ -671,6 +723,16 @@
         }
 
         const current = steps[state.stepIndex];
+        
+        // Validação para a etapa de seleção de atributos globais
+        if (current.id === 'select-attribute') {
+            const hasInvalidMapping = state.mapping.some(map => !map.target_tax || map.target_tax === '');
+            if (hasInvalidMapping) {
+                alert(__('Por favor, selecione um atributo global para todos os atributos locais ou escolha criar novos atributos.', 'local2global'));
+                return;
+            }
+        }
+
         if (current.id === 'dry-run') {
             if (!state.dryRun && !state.dryRunError) {
                 // Caso usuário clique antes do auto disparo concluir, forçar execução.
