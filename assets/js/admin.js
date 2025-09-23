@@ -103,8 +103,8 @@
 
         if (state.stepIndex === steps.length - 1) {
             nextButton.textContent = __('Fechar', 'local2global');
-        } else if (state.stepIndex === steps.length - 2) { // dry-run step
-            nextButton.textContent = settings.i18n.dryRun;
+        } else if (steps[state.stepIndex].id === 'dry-run') {
+            nextButton.textContent = state.dryRun ? settings.i18n.apply : settings.i18n.dryRun;
         } else {
             nextButton.textContent = __('Continuar', 'local2global');
         }
@@ -392,6 +392,7 @@
             path: '/local2global/v1/terms/' + map.target_tax,
         }).then((response) => {
             map.termOptions = response.terms || [];
+            autoMapAttributeTerms(map);
             return map.termOptions;
         }).catch(() => {
             map.termOptions = [];
@@ -622,16 +623,24 @@
             return;
         }
 
-        if (state.stepIndex === steps.length - 2) { // dry-run -> trigger and advance
-            state.stepIndex += 1; // move to apply step visual
-            state.dryRun = null;
-            renderStep();
-            performDryRun();
-            return;
+        const current = steps[state.stepIndex];
+        if (current.id === 'dry-run') {
+            if (!state.dryRun) {
+                state.dryRun = null;
+                renderStep();
+                performDryRun();
+                return;
+            } else {
+                // avançar para apply
+                state.stepIndex += 1;
+                renderStep();
+                applyMapping();
+                return;
+            }
         }
 
-        if (state.stepIndex === steps.length - 1) { // apply step: start application
-            applyMapping();
+        if (current.id === 'apply') {
+            closeModal();
             return;
         }
 
