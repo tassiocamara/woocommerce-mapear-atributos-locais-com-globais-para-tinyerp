@@ -408,7 +408,7 @@ class Mapping_Service {
             $new_attribute->set_visible( $attribute->get_visible() );
             $new_attribute->set_variation( $attribute->get_variation() );
             $new_attribute->set_position( $attribute->get_position() );
-            $new_attribute->set_taxonomy( true );
+            // WooCommerce determina automaticamente que é taxonomy baseado no prefixo 'pa_' e ID > 0
             // Em versões recentes o atributo é taxonômico se name começa com 'pa_' e id > 0.
 
             $attributes[ $taxonomy ] = $new_attribute;
