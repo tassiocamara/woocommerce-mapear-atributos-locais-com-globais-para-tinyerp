@@ -333,9 +333,7 @@ class Mapping_Service {
                             $job['taxonomy'],
                             $job['local_name'],
                             $job['slug_map'],
-                            $corr_id,
-                            false,
-                            false
+                            $corr_id
                         );
                         $results['variations'][ $job['taxonomy'] ] = $variation_stats;
                     }
@@ -347,8 +345,10 @@ class Mapping_Service {
 
                     $this->logger->info( 'attributes.snapshot.after', $this->describe_attributes( $product->get_attributes() ) );
 
+                    // Sync removido: WC_Product_Variable::sync($product, true) sobrescreve as variações
+                    // O WooCommerce fará o sync automaticamente quando necessário
                     if ( $product->is_type( 'variable' ) ) {
-                        WC_Product_Variable::sync( $product, true );
+                        $this->logger->info( 'apply.sync_skipped', [ 'reason' => 'preserve_variation_mappings' ] );
                     }
 
                     wc_delete_product_transients( $product_id );

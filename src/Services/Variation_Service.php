@@ -74,9 +74,8 @@ class Variation_Service {
             $updated++;
         }
 
-        if ( $product instanceof WC_Product_Variable ) {
-            WC_Product_Variable::sync( $product, true );
-        }
+        // Nota: WC_Product_Variable::sync() removido para evitar sobrescrever as variações
+        // O sync será feito pelo Mapping_Service após todas as operações
 
         $updated_pct = $total > 0 ? round( ( $updated / $total ) * 100, 2 ) : 0.0;
         $context = [

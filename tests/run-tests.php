@@ -233,7 +233,8 @@ final class TestRunner {
         $meta = $variation->get_all_meta();
         $this->assertSame( 'azul-marinho', $meta['attribute_pa_cor'] ?? null, 'Variation meta should be updated with slug' );
         $this->assertTrue( ! isset( $meta['attribute_cor'] ), 'Legacy variation meta should be removed' );
-        $this->assertTrue( in_array( $product->get_id(), WC_Product_Variable::$synced_products, true ), 'Variable product should be synced' );
+        // Sync validation removed: we no longer auto-sync to preserve variation mappings
+        // $this->assertTrue( in_array( $product->get_id(), WC_Product_Variable::$synced_products, true ), 'Variable product should be synced' );
     }
 
     private function testApplySuccess(): void {
