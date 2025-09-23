@@ -145,21 +145,13 @@ class Rest_Controller {
                 }
 
                 $options = $options ? (array) $options : [];
-                $deprecated_keys = [ 'auto_create_terms', 'update_variations', 'create_backup', 'hydrate_variations', 'aggressive_hydrate_variations', 'save_template' ];
-                $sent_deprecated = array_values( array_intersect( $deprecated_keys, array_keys( $options ) ) );
-                $mapping_deprecated = [];
-                foreach ( (array) $mapping as $m ) {
-                    if ( isset( $m['save_template'] ) || isset( $m['term_name'] ) ) {
-                        $mapping_deprecated[] = [ 'save_template' => isset( $m['save_template'] ), 'term_name' => isset( $m['term_name'] ) ];
+                    $mapping_deprecated = [];
+                    foreach ( (array) $mapping as $m ) {
+                        if ( isset( $m['term_name'] ) ) {
+                            $this->logger->warning( 'map.deprecated_fields', [ 'mapping_term_name' => true, 'corr_id' => $corr_id ] );
+                            break;
+                        }
                     }
-                }
-                if ( ! empty( $sent_deprecated ) || ! empty( $mapping_deprecated ) ) {
-                    $this->logger->warning( 'map.deprecated_fields', [
-                        'deprecated_options' => $sent_deprecated,
-                        'mapping_flags'      => $mapping_deprecated,
-                        'message'            => 'Campos legacy ignorados a partir da 0.3.0',
-                    ] );
-                }
 
                 $this->logger->info(
                     'map.request_received',

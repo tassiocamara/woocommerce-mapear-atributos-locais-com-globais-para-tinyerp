@@ -10,8 +10,6 @@ use Evolury\Local2Global\Cli\CLI_Command;
 use Evolury\Local2Global\Rest\Rest_Controller;
 use Evolury\Local2Global\Services\Discovery_Service;
 use Evolury\Local2Global\Services\Mapping_Service;
-use Evolury\Local2Global\Services\Rollback_Service;
-use Evolury\Local2Global\Services\Templates_Service;
 use Evolury\Local2Global\Services\Term_Service;
 use Evolury\Local2Global\Services\Variation_Service;
 use Evolury\Local2Global\Utils\Logger;

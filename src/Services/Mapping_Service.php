@@ -24,16 +24,15 @@ class Mapping_Service {
         return $this->logger->scoped(
             $this->build_context( $product_id, $corr_id, 'dry_run' ),
             function () use ( $product_id, $mapping, $options, $corr_id ) {
-                // Depreciação: opções e campos legacy ignorados >=0.3.0
-                $deprecated_opt_keys = array_intersect( array_keys( (array) $options ), [ 'auto_create_terms', 'update_variations', 'create_backup', 'hydrate_variations', 'aggressive_hydrate_variations', 'save_template' ] );
+                // Depreciação: apenas term_name em termos (opções removidas definitivamente >=0.3.0)
                 $deprecated_mapping  = [];
                 foreach ( $mapping as $m ) {
-                    if ( isset( $m['save_template'] ) || isset( $m['term_name'] ) ) {
-                        $deprecated_mapping[] = [ 'save_template' => isset( $m['save_template'] ), 'term_name' => isset( $m['term_name'] ) ];
+                    if ( isset( $m['term_name'] ) ) {
+                        $deprecated_mapping[] = true;
                     }
                 }
-                if ( $deprecated_opt_keys || $deprecated_mapping ) {
-                    $this->logger->warning( 'dry_run.deprecated_fields', [ 'options' => array_values( $deprecated_opt_keys ), 'mapping_flags' => $deprecated_mapping ] );
+                if ( $deprecated_mapping ) {
+                    $this->logger->warning( 'dry_run.deprecated_fields', [ 'mapping_term_name' => true ] );
                 }
                 $product = wc_get_product( $product_id );
                 if ( ! $product instanceof WC_Product ) {
@@ -80,7 +79,7 @@ class Mapping_Service {
 
                         if ( $term ) {
                             $term_actions['existing'][] = $local_value;
-                        } elseif ( ! empty( $term_map['create'] ) || ! empty( $options['auto_create_terms'] ) || ! $attribute_exists ) {
+                        } elseif ( ! empty( $term_map['create'] ) || ! $attribute_exists ) {
                             $term_actions['create'][] = [ 'value' => $local_value, 'slug' => $slug ];
                         } else {
                             $term_errors[] = sprintf( __( 'Termo %1$s não encontrado na taxonomia %2$s.', 'local2global' ), $local_value, $target_tax );
@@ -110,16 +109,12 @@ class Mapping_Service {
         return $this->logger->scoped(
             $this->build_context( $product_id, $corr_id, 'apply' ),
             function () use ( $product_id, $mapping, $options, $corr_id ) {
-                // Depreciação: opções e campos legacy ignorados >=0.3.0
-                $deprecated_opt_keys = array_intersect( array_keys( (array) $options ), [ 'auto_create_terms', 'update_variations', 'create_backup', 'hydrate_variations', 'aggressive_hydrate_variations', 'save_template' ] );
-                $deprecated_mapping  = [];
+                $deprecated_mapping  = false;
                 foreach ( $mapping as $m ) {
-                    if ( isset( $m['save_template'] ) || isset( $m['term_name'] ) ) {
-                        $deprecated_mapping[] = [ 'save_template' => isset( $m['save_template'] ), 'term_name' => isset( $m['term_name'] ) ];
-                    }
+                    if ( isset( $m['term_name'] ) ) { $deprecated_mapping = true; break; }
                 }
-                if ( $deprecated_opt_keys || $deprecated_mapping ) {
-                    $this->logger->warning( 'apply.deprecated_fields', [ 'options' => array_values( $deprecated_opt_keys ), 'mapping_flags' => $deprecated_mapping ] );
+                if ( $deprecated_mapping ) {
+                    $this->logger->warning( 'apply.deprecated_fields', [ 'mapping_term_name' => true ] );
                 }
                 $product = wc_get_product( $product_id );
                 if ( ! $product instanceof WC_Product ) {

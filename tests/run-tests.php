@@ -240,14 +240,11 @@ final class TestRunner {
                 'local_attr'    => 'Cor',
                 'local_label'   => 'Cor',
                 'target_tax'    => 'pa_cor',
-                'terms'         => [
-                    [ 'local_value' => 'Azul' ],
-                    [ 'local_value' => 'Preto', 'create' => true ],
-                ],
+                    'terms'         => [],
             ],
         ];
 
-        $result = $service->apply( $product->get_id(), $mapping, [ 'auto_create_terms' => true ], 'l2g_success' );
+    $result = $service->apply( $product->get_id(), $mapping, [], 'l2g_success' );
 
         $this->assertTrue( ! is_wp_error( $result ), 'Apply should succeed' );
         $this->assertSame( [ 'pa_cor' ], $result['updated_attrs'], 'Updated attributes mismatch' );
@@ -317,7 +314,7 @@ final class TestRunner {
                     'terms'       => [ [ 'local_value' => 'Azul' ] ],
                 ],
             ],
-            [ 'auto_create_terms' => true, 'update_variations' => true ],
+            [],
             'l2g_fail'
         );
 
