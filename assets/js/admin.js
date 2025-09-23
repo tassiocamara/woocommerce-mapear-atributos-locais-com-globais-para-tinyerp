@@ -587,6 +587,10 @@
                 term.term_slug = bestMatch.slug;
                 term.term_name = bestMatch.name;
                 term.create = false;
+            } else {
+                // Nenhum termo existente suficientemente similar: marcar para criação.
+                term.create = true;
+                term.term_slug = ''; // backend derivará
             }
         });
     }
