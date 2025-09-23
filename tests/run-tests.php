@@ -2,6 +2,20 @@
 
 declare(strict_types=1);
 
+// Add random_int function if not exists (for PHP < 7.0 compatibility in tests)
+if (!function_exists('random_int')) {
+    /**
+     * Generate a random integer
+     * @param int $min
+     * @param int $max
+     * @return int
+     */
+    function random_int(int $min, int $max): int {
+        $range = $max - $min;
+        return $min + (int) (microtime(true) * 1000000) % ($range + 1);
+    }
+}
+
 require __DIR__ . '/stubs/woocommerce.php';
 require __DIR__ . '/../src/Services/Mapping_Service.php';
 require __DIR__ . '/../src/Services/Variation_Service.php';
@@ -210,7 +224,11 @@ final class TestRunner {
 
         $result = $service->update_variations( $product, 'pa_cor', 'Cor', [ 'azul' => 'azul-marinho' ] );
 
-        $this->assertSame( [ 'updated' => 1, 'skipped' => 0 ], $result, 'Variation update counters mismatch' );
+        // Verificar contadores básicos
+        $this->assertSame( 1, $result['updated'], 'Should have updated 1 variation' );
+        $this->assertSame( 0, $result['skipped'], 'Should have skipped 0 variations' );
+        $this->assertSame( 1, $result['total_variations'], 'Should have 1 total variation' );
+        $this->assertSame( 100.0, $result['updated_pct'], 'Should have 100% update rate' );
 
         $meta = $variation->get_all_meta();
         $this->assertSame( 'azul-marinho', $meta['attribute_pa_cor'] ?? null, 'Variation meta should be updated with slug' );

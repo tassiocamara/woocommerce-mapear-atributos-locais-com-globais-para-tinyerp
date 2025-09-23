@@ -1,3 +1,36 @@
 {
-    "bladeFormatter.format.noPhpSyntaxCheck": true
+    "bladeFormatter.format.noPhpSyntaxCheck": true,
+    
+    // Configuração do Intelephense para WordPress/WooCommerce
+    "intelephense.environment.includePaths": [
+        "./vendor/php-stubs/wordpress-stubs",
+        "./vendor/php-stubs/woocommerce-stubs",
+        "./vendor/php-stubs/wp-cli-stubs"
+    ],
+    
+    // Stubs básicos do PHP para melhor autocompletar
+    "intelephense.stubs": [
+        "apache", "bcmath", "bz2", "calendar", "Core", "curl", "date", "dom", "fileinfo",
+        "filter", "gd", "hash", "iconv", "imap", "intl", "json", "libxml", "mbstring",
+        "mysqli", "openssl", "pcre", "PDO", "Phar", "posix", "readline", "Reflection", 
+        "session", "SimpleXML", "soap", "sockets", "sodium", "SPL", "sqlite3", "standard", 
+        "tidy", "tokenizer", "xml", "xmlreader", "xmlwriter", "zip", "zlib", "wordpress"
+    ],
+    
+    // Diagnósticos ativados para pegar erros reais
+    "intelephense.diagnostics.undefinedFunctions": true,
+    "intelephense.diagnostics.undefinedConstants": true,
+    "intelephense.diagnostics.undefinedTypes": true,
+    "intelephense.diagnostics.undefinedMethods": true,
+    "intelephense.diagnostics.undefinedProperties": true,
+    
+    // Melhorar performance e precisão
+    "intelephense.files.maxSize": 5000000,
+    "intelephense.completion.triggerParameterHints": true,
+    "intelephense.completion.insertUseDeclaration": true,
+    "intelephense.completion.fullyQualifyGlobalConstantsAndFunctions": false,
+    
+    // Configurações específicas para WordPress
+    "intelephense.environment.phpVersion": "8.1.0",
+    "intelephense.format.braces": "allman"
 }

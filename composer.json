@@ -1,0 +1,37 @@
+{
+    "name": "evolury/local2global-attribute-mapper",
+    "description": "WooCommerce plugin to map local attributes to global taxonomies with automatic variation updates",
+    "type": "wordpress-plugin",
+    "license": "GPL-2.0-or-later",
+    "authors": [
+        {
+            "name": "Tássio Câmara",
+            "email": "tassio@evolury.com.br",
+            "homepage": "https://evolury.com.br"
+        }
+    ],
+    "require": {
+        "php": ">=8.1"
+    },
+    "require-dev": {
+        "php-stubs/woocommerce-stubs": "^8.6",
+        "php-stubs/wordpress-stubs": "^6.4",
+        "php-stubs/wp-cli-stubs": "^2.12",
+        "phpstan/phpstan": "^1.10",
+        "szepeviktor/phpstan-wordpress": "^1.3"
+    },
+    "autoload": {
+        "psr-4": {
+            "Evolury\\Local2Global\\": "src/"
+        }
+    },
+    "config": {
+        "allow-plugins": {
+            "dealerdirect/phpcodesniffer-composer-installer": true
+        },
+        "sort-packages": true,
+        "optimize-autoloader": true
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
