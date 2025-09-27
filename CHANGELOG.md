@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.5.0 (2025-09-27)
+
+### 🐛 CORREÇÕES CRÍTICAS
+- **Fix: Campos de seleção na etapa "Mapear Valores para Termos"**
+  - Resolvido erro 400 ao tentar carregar termos de atributos que serão criados
+  - Implementada verificação prévia para `map.create_attribute = true`
+  - Melhorado tratamento de erro na função `loadTermOptions()` com logging detalhado
+  - Configuração automática de termos para criação quando atributo é novo
+  - Garantia de que campos de seleção sempre tenham opção "Criar novo termo"
+
+### ✨ MELHORIAS DE UX
+- **Ocultação automática de botão após mapeamento**
+  - Implementada função `hideButtonAfterMapping()` para feedback visual imediato
+  - Botão é ocultado automaticamente após processamento bem-sucedido
+  - Eliminada necessidade de refresh da página para atualizar interface
+  - Prevenção de reprocessamento acidental de produtos já mapeados
+  - Mantém consistência com lógica PHP existente de ocultação
+
+### 🎨 INTERFACE LIMPA
+- **Remoção de todos os ícones/emojis da interface**
+  - Removidos ícones decorativos (✨, 🔗, ➕) dos campos de seleção
+  - Removidas setas (←, →) dos botões de navegação
+  - Removidos emojis de status dos arquivos de teste
+  - Interface mais limpa, profissional e acessível
+  - Melhor compatibilidade universal sem dependência de suporte a emojis
+
+### 🔧 MELHORIAS TÉCNICAS
+- Aprimorados event listeners para configuração automática de termos
+- Implementado fallback adequado para atributos que serão criados
+- Otimizações de performance na renderização de seletores
+- Melhor sincronização entre frontend e backend
+
 ## 0.4.0 (2025-09-23)
 
 ### 🚀 REFATORAÇÃO COMPLETA
