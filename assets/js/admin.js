@@ -617,6 +617,9 @@
             
             // Marcar como concluído para prevenir re-aplicação
             state.isCompleted = true;
+            
+            // Ocultar botão imediatamente após mapeamento bem-sucedido
+            hideButtonAfterMapping();
         } catch (error) {
             const formatted = formatApiError(error);
             state.log.push(__('Erro: ', 'local2global') + formatted.message);
@@ -688,6 +691,27 @@
             .replace(/[^a-z0-9]+/g, '-')
             .replace(/^-+|-+$/g, '')
             .replace(/-{2,}/g, '-');
+    }
+
+    function hideButtonAfterMapping() {
+        // Localizar o botão de mapeamento do produto atual
+        const buttonWrap = document.querySelector('.local2global-button-wrap');
+        if (buttonWrap) {
+            // Ocultar o botão imediatamente
+            buttonWrap.style.display = 'none';
+            
+            // Opcional: remover do DOM completamente
+            // buttonWrap.remove();
+        }
+        
+        // Também tentar por seletores alternativos se necessário
+        const buttons = document.querySelectorAll('.local2global-open');
+        buttons.forEach(button => {
+            const wrap = button.closest('.local2global-button-wrap');
+            if (wrap) {
+                wrap.style.display = 'none';
+            }
+        });
     }
 
     function autoMapGlobalAttributes() {
