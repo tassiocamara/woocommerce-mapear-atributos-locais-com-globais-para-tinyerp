@@ -110,7 +110,7 @@
         step.render(modalBody);
 
         prevButton.disabled = state.stepIndex === 0 || state.isCompleted;
-        prevButton.textContent = __('← Anterior', 'local2global');
+        prevButton.textContent = __('Anterior', 'local2global');
 
         if (state.stepIndex === steps.length - 1) {
             nextButton.textContent = __('Concluir', 'local2global');
@@ -122,7 +122,7 @@
                 nextButton.textContent = state.dryRun ? settings.i18n.apply : settings.i18n.dryRun;
             }
         } else {
-            nextButton.textContent = __('Próximo →', 'local2global');
+            nextButton.textContent = __('Próximo', 'local2global');
         }
 
         if (!state.isCompleted) {
@@ -185,7 +185,7 @@
             const select = document.createElement('select');
             select.dataset.index = index;
             select.className = 'local2global-attr-select';
-            select.innerHTML = '<option value="">✨ ' + __('Selecionar atributo global', 'local2global') + '</option>';
+            select.innerHTML = '<option value="">' + __('Selecionar atributo global', 'local2global') + '</option>';
             settings.attributes.forEach((attr) => {
                 const option = document.createElement('option');
                 option.value = attr.slug;
@@ -197,7 +197,7 @@
             });
             const createOption = document.createElement('option');
             createOption.value = '__create_new__';
-            createOption.textContent = '➕ ' + __('Criar novo atributo', 'local2global');
+            createOption.textContent = __('Criar novo atributo', 'local2global');
             if (map.create_attribute) {
                 createOption.selected = true;
             }
@@ -242,7 +242,7 @@
 
     function renderTermMatrixStep(container) {
         const intro = document.createElement('p');
-        intro.textContent = __('🔗 Configure como cada valor local será associado aos termos globais. O sistema sugeriu correspondências automáticas baseadas em similaridade.', 'local2global');
+        intro.textContent = __('Configure como cada valor local será associado aos termos globais. O sistema sugeriu correspondências automáticas baseadas em similaridade.', 'local2global');
         container.appendChild(intro);
 
         state.mapping.forEach((map, mapIndex) => {
@@ -265,7 +265,7 @@
                 select.className = 'local2global-term-select';
                 select.dataset.attrIndex = mapIndex;
                 select.dataset.termIndex = termIndex;
-                select.innerHTML = '<option value="">✨ ' + __('Selecionar termo', 'local2global') + '</option>';
+                select.innerHTML = '<option value="">' + __('Selecionar termo', 'local2global') + '</option>';
 
                 ensureTermOptions(map).forEach((termOption) => {
                     const option = document.createElement('option');
@@ -281,7 +281,7 @@
                 const createValue = '__create__';
                 const createOption = document.createElement('option');
                 createOption.value = createValue;
-                createOption.textContent = '➕ ' + __('Criar novo termo', 'local2global') + ' (' + term.local_value + ')';
+                createOption.textContent = __('Criar novo termo', 'local2global') + ' (' + term.local_value + ')';
                 if (term.create) {
                     createOption.selected = true;
                 }

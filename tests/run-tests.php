@@ -13,12 +13,12 @@
 
 declare(strict_types=1);
 
-echo "🧪 TESTE COMPLETO UNIFICADO - LOCAL2GLOBAL ATTRIBUTE MAPPER\n";
+echo "TESTE COMPLETO UNIFICADO - LOCAL2GLOBAL ATTRIBUTE MAPPER\n";
 echo str_repeat("=", 65) . "\n\n";
 
 // ==================== SEÇÃO 1: VERIFICAÇÃO DE ARQUIVOS ====================
 
-echo "📁 VERIFICAÇÃO DE ARQUIVOS PRINCIPAIS:\n";
+echo "VERIFICAÇÃO DE ARQUIVOS PRINCIPAIS:\n";
 
 $core_files = [
     'Plugin principal' => 'local2global-attribute-mapper.php',
@@ -35,10 +35,10 @@ $file_check_total = count($core_files);
 
 foreach ($core_files as $name => $path) {
     if (file_exists($path)) {
-        echo sprintf("%-20s ✅ OK\n", $name);
+        echo sprintf("%-20s OK\n", $name);
         $file_check_passed++;
     } else {
-        echo sprintf("%-20s ❌ FALTANDO\n", $name);
+        echo sprintf("%-20s FALTANDO\n", $name);
     }
 }
 
@@ -46,7 +46,7 @@ echo "\n";
 
 // ==================== SEÇÃO 2: VERIFICAÇÃO DAS CORREÇÕES ====================
 
-echo "🔧 VERIFICAÇÃO DAS CORREÇÕES IMPLEMENTADAS:\n";
+echo "VERIFICAÇÃO DAS CORREÇÕES IMPLEMENTADAS:\n";
 
 $corrections = [
     'atomic_persistence' => [
@@ -91,7 +91,7 @@ $corrections_passed = 0;
 $corrections_total = count($corrections);
 
 foreach ($corrections as $key => $correction) {
-    $status = $correction['check']() ? '✅ IMPLEMENTADO' : '❌ FALTANDO';
+    $status = $correction['check']() ? 'IMPLEMENTADO' : 'FALTANDO';
     echo sprintf("%-25s %s - %s\n", $key, $status, $correction['description']);
     if ($correction['check']()) {
         $corrections_passed++;
@@ -102,7 +102,7 @@ echo "\n";
 
 // ==================== SEÇÃO 3: TESTES FUNCIONAIS ====================
 
-echo "⚙️ TESTES FUNCIONAIS:\n";
+echo "TESTES FUNCIONAIS:\n";
 
 // Add random_int function if not exists (for PHP < 7.0 compatibility in tests)
 if (!function_exists('random_int')) {
@@ -150,30 +150,30 @@ if ($functional_tests_enabled) {
         if (class_exists('Evolury\\Local2Global\\Services\\Mapping_Service') &&
             class_exists('Evolury\\Local2Global\\Services\\Variation_Service') &&
             class_exists('Evolury\\Local2Global\\Utils\\Logger')) {
-            echo "✅ OK\n";
+            echo "OK\n";
             $functional_tests_passed++;
         } else {
-            echo "❌ FALHOU\n";
+            echo "FALHOU\n";
         }
 
         // Test 2: Logger Instance
         echo "Instanciação do Logger     ";
         $logger = new Evolury\Local2Global\Utils\Logger();
         if ($logger instanceof Evolury\Local2Global\Utils\Logger) {
-            echo "✅ OK\n";
+            echo "OK\n";
             $functional_tests_passed++;
         } else {
-            echo "❌ FALHOU\n";
+            echo "FALHOU\n";
         }
 
         // Test 3: Value Normalizer
         echo "Normalização de valores    ";
         $normalized = Evolury\Local2Global\Utils\Value_Normalizer::normalize('Test Value');
         if (is_string($normalized) && $normalized === 'test-value') {
-            echo "✅ OK\n";
+            echo "OK\n";
             $functional_tests_passed++;
         } else {
-            echo "❌ FALHOU\n";
+            echo "FALHOU\n";
         }
 
         // Test 4: Service Instantiation
@@ -181,24 +181,24 @@ if ($functional_tests_enabled) {
         $term_service = new Evolury\Local2Global\Services\Term_Service($logger);
         $variation_service = new Evolury\Local2Global\Services\Variation_Service($logger);
         if ($term_service && $variation_service) {
-            echo "✅ OK\n";
+            echo "OK\n";
             $functional_tests_passed++;
         } else {
-            echo "❌ FALHOU\n";
+            echo "FALHOU\n";
         }
 
         // Test 5: Method Existence
         echo "Métodos principais         ";
         if (method_exists($variation_service, 'update_variations') &&
             method_exists($term_service, 'ensure_global_attribute')) {
-            echo "✅ OK\n";
+            echo "OK\n";
             $functional_tests_passed++;
         } else {
-            echo "❌ FALHOU\n";
+            echo "FALHOU\n";
         }
 
     } catch (Exception $e) {
-        echo "❌ ERRO: " . $e->getMessage() . "\n";
+        echo "ERRO: " . $e->getMessage() . "\n";
     }
 } else {
     echo "Testes funcionais desabilitados: $functional_test_error\n";
@@ -208,15 +208,15 @@ echo "\n";
 
 // ==================== SEÇÃO 4: VERIFICAÇÃO DE PERFORMANCE ====================
 
-echo "⚡ ANÁLISE DE PERFORMANCE:\n";
+echo "ANÁLISE DE PERFORMANCE:\n";
 
 $performance_checks = [
     'Tamanho do Variation_Service' => function() {
         $lines = count(file('src/Services/Variation_Service.php'));
         if ($lines <= 800) {
-            return ['status' => '✅', 'message' => "$lines linhas (objetivo: ≤800)"];
+            return ['status' => 'OK', 'message' => "$lines linhas (objetivo: ≤800)"];
         } else {
-            return ['status' => '⚠️', 'message' => "$lines linhas (acima do objetivo)"];
+            return ['status' => 'AVISO', 'message' => "$lines linhas (acima do objetivo)"];
         }
     },
     'Métodos excessivos removidos' => function() {
@@ -229,9 +229,9 @@ $performance_checks = [
             }
         }
         if ($found === 0) {
-            return ['status' => '✅', 'message' => 'Métodos redundantes removidos'];
+            return ['status' => 'OK', 'message' => 'Métodos redundantes removidos'];
         } else {
-            return ['status' => '⚠️', 'message' => "$found métodos redundantes ainda presentes"];
+            return ['status' => 'AVISO', 'message' => "$found métodos redundantes ainda presentes"];
         }
     },
     'Logs de debug minimizados' => function() {
@@ -242,9 +242,9 @@ $performance_checks = [
             $found += substr_count($content, $pattern);
         }
         if ($found <= 5) {
-            return ['status' => '✅', 'message' => 'Logs de debug otimizados'];
+            return ['status' => 'OK', 'message' => 'Logs de debug otimizados'];
         } else {
-            return ['status' => '⚠️', 'message' => "$found logs de debug encontrados"];
+            return ['status' => 'AVISO', 'message' => "$found logs de debug encontrados"];
         }
     }
 ];
@@ -255,7 +255,7 @@ $performance_total = count($performance_checks);
 foreach ($performance_checks as $name => $check) {
     $result = $check();
     echo sprintf("%-30s %s %s\n", $name, $result['status'], $result['message']);
-    if ($result['status'] === '✅') {
+    if ($result['status'] === 'OK') {
         $performance_passed++;
     }
 }
@@ -264,7 +264,7 @@ echo "\n";
 
 // ==================== SEÇÃO 5: RESULTADO FINAL ====================
 
-echo "📊 RESULTADO DOS TESTES:\n";
+echo "RESULTADO DOS TESTES:\n";
 echo sprintf("Arquivos principais: %d/%d OK\n", $file_check_passed, $file_check_total);
 echo sprintf("Correções implementadas: %d/%d OK\n", $corrections_passed, $corrections_total);
 echo sprintf("Testes funcionais: %d/%d OK\n", $functional_tests_passed, $functional_tests_total);
@@ -278,14 +278,14 @@ echo sprintf("Taxa de sucesso geral: %.1f%%\n\n", $success_rate);
 
 // Status final
 if ($success_rate >= 90) {
-    echo "🎉 SUCESSO: Plugin otimizado e funcionando corretamente!\n";
+    echo "SUCESSO: Plugin otimizado e funcionando corretamente!\n";
     $exit_code = 0;
 } elseif ($success_rate >= 75) {
-    echo "⚠️ ATENÇÃO: Algumas verificações falharam!\n";
+    echo "ATENÇÃO: Algumas verificações falharam!\n";
     echo "Revise as implementações antes de usar em produção.\n";
     $exit_code = 1;
 } else {
-    echo "❌ FALHA: Muitos problemas detectados!\n";
+    echo "FALHA: Muitos problemas detectados!\n";
     echo "Correções necessárias antes de continuar.\n";
     $exit_code = 2;
 }
