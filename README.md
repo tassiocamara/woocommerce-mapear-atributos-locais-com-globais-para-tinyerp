@@ -2,7 +2,7 @@
 
 **Plugin WooCommerce para mapeamento inteligente de atributos locais para taxonomias globais**
 
-[![Version](https://img.shields.io/badge/version-0.3.0-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.5.0-blue.svg)](CHANGELOG.md)
 [![WordPress](https://img.shields.io/badge/WordPress-6.4%2B-blue.svg)](https://wordpress.org/)
 [![WooCommerce](https://img.shields.io/badge/WooCommerce-8.6%2B-purple.svg)](https://woocommerce.com/)
 [![PHP](https://img.shields.io/badge/PHP-8.1%2B-787CB5.svg)](https://php.net/)
@@ -28,7 +28,9 @@ A documentação foi consolidada em um único arquivo abrangente que inclui:
 
 Automatiza a conversão de **atributos locais** (não-taxonômicos) para **taxonomias globais** (`pa_*`) em produtos WooCommerce, incluindo:
 
-- 🧠 **Seleção Automática Inteligente**: Detecta automaticamente correspondências (v0.3.0)
+- 🧠 **Seleção Automática Inteligente**: Detecta automaticamente correspondências (v0.3.0+)
+- 🐛 **Correções Críticas**: Campos de seleção funcionando corretamente (v0.5.0)
+- ✨ **UX Aprimorada**: Feedback visual imediato e interface limpa (v0.5.0)
 - 🔍 **Descoberta Automática**: Identifica atributos locais em produtos variáveis
 - 🎯 **Mapeamento Assistido**: Interface visual para associar atributos
 - 👀 **Pré-visualização**: Mostra mudanças antes da aplicação
@@ -39,15 +41,15 @@ Automatiza a conversão de **atributos locais** (não-taxonômicos) para **taxon
 
 ---
 
-## ✨ Destaque da Versão 0.3.0
+## ✨ Destaque da Versão 0.5.0
 
-### Seleção Automática de Atributos Globais
+### Correções Críticas e Melhorias de UX
 
-- **80-90% redução** em cliques manuais
-- **Correspondência exata**: `"Cor"` → `"pa_cor"` automático
-- **Similaridade inteligente**: Threshold de 70% para matches parciais
-- **Criação automática**: Fallback para novos atributos
-- **Validação aprimorada**: Previne erros de navegação
+- **Bug crítico resolvido**: Campos de seleção funcionando corretamente na etapa de mapeamento
+- **UX melhorada**: Botão ocultado automaticamente após processamento (sem refresh)
+- **Interface limpa**: Removidos todos os ícones para maior profissionalismo
+- **Prevenção de erros**: Evita reprocessamento acidental de produtos mapeados
+- **API aprimorada**: Melhor tratamento de erros 400 e logging detalhado
 
 ---
 
@@ -77,4 +79,4 @@ Automatiza a conversão de **atributos locais** (não-taxonômicos) para **taxon
 
 ---
 
-**Licença**: GPL v2+ | **Desenvolvido por**: [Evolury](https://github.com/tassiocamara) | **Versão**: 0.3.0
+**Licença**: GPL v2+ | **Desenvolvido por**: [Evolury](https://github.com/tassiocamara) | **Versão**: 0.5.0
