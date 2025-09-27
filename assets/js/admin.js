@@ -208,9 +208,23 @@
                 if (e.target.value === '__create_new__') {
                     entry.create_attribute = true;
                     entry.target_tax = 'pa_' + slugify(entry.local_label);
+                    // Configurar termos para criação quando atributo será criado
+                    entry.terms.forEach((term) => {
+                        term.create = true;
+                        term.term_slug = '';
+                    });
+                    // Limpar opções de termos
+                    entry.termOptions = [];
                 } else {
                     entry.create_attribute = false;
                     entry.target_tax = e.target.value;
+                    // Reset termo configurações quando mudamos para atributo existente
+                    entry.terms.forEach((term) => {
+                        term.create = false;
+                        term.term_slug = '';
+                    });
+                    // Limpar opções para forçar reload
+                    entry.termOptions = [];
                 }
                 renderStep();
             });
@@ -472,6 +486,12 @@
     }
 
     function ensureTermOptions(map) {
+        // Se o atributo será criado, retornar array vazio (não há termos existentes)
+        if (map.create_attribute) {
+            map.termOptions = [];
+            return [];
+        }
+
         if (!map.termOptions || !map.termOptions.length) {
             loadTermOptions(map).then(() => {
                 if (steps[state.stepIndex]?.id === 'term-matrix') {
@@ -487,14 +507,34 @@
             return Promise.resolve([]);
         }
 
+        // Se o atributo será criado, não há termos existentes para carregar
+        if (map.create_attribute) {
+            map.termOptions = [];
+            // Marcar todos os termos para criação quando o atributo é novo
+            map.terms.forEach((term) => {
+                term.create = true;
+                term.term_slug = '';
+            });
+            return Promise.resolve([]);
+        }
+
         return apiFetch({
             path: '/local2global/v1/terms/' + map.target_tax,
         }).then((response) => {
             map.termOptions = response.terms || [];
             autoMapAttributeTerms(map);
             return map.termOptions;
-        }).catch(() => {
+        }).catch((error) => {
+            console.warn('Erro ao carregar termos para', map.target_tax, ':', error);
             map.termOptions = [];
+            // Em caso de erro, marcar termos para criação
+            map.terms.forEach((term) => {
+                if (!term.term_slug) {
+                    term.create = true;
+                    term.term_slug = '';
+                }
+            });
+            return [];
         });
     }
 
